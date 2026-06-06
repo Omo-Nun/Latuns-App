@@ -29,8 +29,7 @@ COPY --from=builder /app/.next/static ./.next/static
 # Copy scripts and entrypoint
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/start.sh ./
-RUN chmod +x start.sh
-
+RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 EXPOSE 3000
 
 # Next.js standalone build requires hostname 0.0.0.0
