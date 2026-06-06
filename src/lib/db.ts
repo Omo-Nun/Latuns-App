@@ -20,6 +20,9 @@ if (process.env.NODE_ENV === 'production') {
   db = global.db;
 }
 
+db.exec('PRAGMA busy_timeout = 5000;');
+db.exec('PRAGMA journal_mode = WAL;');
+
 // Initialize database schema - only if not already initialized in this process
 // Initialize database schema - only if not already initialized in this process
 if (!global.db_initialized) {
