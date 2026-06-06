@@ -46,6 +46,7 @@ next-env.d.ts
 # Database
 latuns.db
 *.db
+/data/
 
 # Uploads
 upload/

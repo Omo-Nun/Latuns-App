@@ -2,7 +2,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 
-const dbPath = path.join(process.cwd(), 'latuns.db');
+const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'latuns.db');
 
 declare global {
   var db: any;
@@ -20,12 +20,18 @@ if (process.env.NODE_ENV === 'production') {
   db = global.db;
 }
 
-db.exec('PRAGMA busy_timeout = 5000;');
-db.exec('PRAGMA journal_mode = WAL;');
+const isBuildPhase = process.env.npm_lifecycle_event === 'build' || 
+                     process.env.NEXT_PHASE === 'phase-production-build' ||
+                     process.argv.some(arg => arg.includes('build')) ||
+                     process.env.IS_DOCKER_BUILD === '1';
+
+if (!isBuildPhase) {
+    db.exec('PRAGMA busy_timeout = 5000;');
+    db.exec('PRAGMA journal_mode = WAL;');
+}
 
 // Initialize database schema - only if not already initialized in this process
-// Initialize database schema - only if not already initialized in this process
-if (!global.db_initialized) {
+if (!global.db_initialized && !isBuildPhase) {
     // 1. Base Tables
     db.exec(`
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);

@@ -7,6 +7,7 @@ RUN npm ci
 
 COPY . .
 # We need to build the app
+ENV IS_DOCKER_BUILD=1
 RUN npm run build
 
 # Production image
@@ -17,7 +18,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create required directories for persistent volumes
-RUN mkdir -p /app/upload /app/backups
+RUN mkdir -p /app/upload /app/backups /app/data
 
 # Copy over built assets and standalone server
 COPY --from=builder /app/next.config.ts ./

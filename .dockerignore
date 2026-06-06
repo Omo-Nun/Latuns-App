@@ -7,6 +7,10 @@ node_modules
 npm-debug.log
 latuns.db
 latuns.db-journal
+latuns.db-wal
+latuns.db-shm
+*.db
+data/
 backups/
 upload/
 scratch/

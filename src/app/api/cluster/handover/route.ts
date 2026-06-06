@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requirePermission } from '@/lib/auth';
+import { encrypt } from '@/lib/encryption';
 import db from '@/lib/db';
 import fs from 'fs/promises';
 import path from 'path';
@@ -23,6 +24,17 @@ export async function POST(req: Request) {
         
         const backupFilePath = path.join(backupDir, backupFileName);
         db.exec(`VACUUM INTO '${backupFilePath}'`);
+
+        // Client-Side Zero-Knowledge Encryption
+        const dbBuffer = await fs.readFile(backupFilePath);
+        const dbBase64 = dbBuffer.toString('base64');
+        const encryptedPayload = encrypt(dbBase64);
+        
+        const encFilePath = `${backupFilePath}.enc`;
+        await fs.writeFile(encFilePath, encryptedPayload);
+        
+        // Cleanup the unencrypted SQLite file
+        await fs.unlink(backupFilePath);
         
         // 2. Update role in settings table
         const newRole = forceStandby ? 'Standby' : 'Primary';

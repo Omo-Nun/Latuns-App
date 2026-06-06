@@ -9,8 +9,9 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
+      - DB_PATH=/app/data/latuns.db
       # - ENCRYPTION_KEY=${ENCRYPTION_KEY} # Passed from host environment
     volumes:
-      - ./latuns.db:/app/latuns.db
+      - ./data:/app/data
       - ./backups:/app/backups
       - ./upload:/app/upload
