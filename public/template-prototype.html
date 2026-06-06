@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Template Prototype</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #e2e8f0; 
+            display: flex; 
+            justify-content: center; 
+            padding: 40px 20px;
+            font-family: 'Inter', sans-serif;
+        }
+        .page {
+            width: 800px;
+            min-height: 1100px;
+            background: #ffffff;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.15);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* ─── HEADER ─── */
+        .header {
+            position: relative;
+            width: 100%;
+            height: 130px;
+            overflow: hidden;
+        }
+        .header-red {
+            position: absolute;
+            top: 0; left: 0;
+            width: 60%;
+            height: 115px;
+            background: #b91c1c;
+            clip-path: polygon(0 0, 100% 0, 85% 100%, 0 100%);
+            z-index: 2;
+        }
+        .header-blue {
+            position: absolute;
+            top: 0; right: 0;
+            width: 50%;
+            height: 115px;
+            background: #1A2980;
+            clip-path: polygon(15% 0, 100% 0, 100% 100%, 0 100%);
+            z-index: 1;
+        }
+        .header-accent {
+            position: absolute;
+            bottom: 8px; right: 0;
+            width: 42%;
+            height: 4px;
+            background: #b91c1c;
+            z-index: 0;
+        }
+        .header-content {
+            position: relative;
+            z-index: 3;
+            display: flex;
+            height: 115px;
+            width: 100%;
+        }
+        .header-left {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding-left: 30px;
+        }
+        .header-left img {
+            height: 65px;
+            object-fit: contain;
+            align-self: flex-start;
+        }
+        .header-tagline {
+            font-size: 13px;
+            color: white;
+            font-weight: 700;
+            margin-top: 4px;
+            letter-spacing: 0.5px;
+        }
+        .header-right {
+            width: 320px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding-left: 40px;
+        }
+        .header-title {
+            font-size: 40px;
+            font-weight: 950;
+            color: #b91c1c;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            line-height: 1;
+        }
+        .header-docnum {
+            font-size: 14px;
+            color: white;
+            margin-top: 8px;
+            font-weight: 800;
+            letter-spacing: 1px;
+        }
+
+        /* ─── BODY ─── */
+        .body-content {
+            padding: 25px 40px;
+        }
+
+        /* Metadata row */
+        .meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 25px;
+        }
+        .meta-address {
+            font-size: 12px;
+            color: #334155;
+            line-height: 1.6;
+        }
+        .meta-address strong { font-weight: 700; }
+        .meta-right {
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 8px;
+        }
+        .meta-date {
+            font-size: 16px;
+            color: #1e293b;
+            font-weight: 800;
+        }
+        .badge {
+            background: #b91c1c;
+            color: white;
+            font-weight: 900;
+            font-size: 12px;
+            padding: 6px 18px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Header note */
+        .header-note {
+            text-align: center;
+            font-size: 13px;
+            font-style: italic;
+            color: #475569;
+            margin-bottom: 20px;
+        }
+
+        /* Client block */
+        .client-block {
+            margin-bottom: 20px;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #1A2980;
+        }
+        .client-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .client-name {
+            font-size: 16px;
+            font-weight: 800;
+            color: #1A2980;
+            margin-bottom: 2px;
+        }
+        .client-address {
+            color: #475569;
+            font-size: 13px;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            border: 1px solid #e2e8f0;
+        }
+        thead th {
+            background: #1A2980;
+            color: white;
+            padding: 12px;
+            text-transform: uppercase;
+            font-size: 13px;
+            border: 1px solid #e2e8f0;
+        }
+        tbody td {
+            padding: 10px 12px;
+            font-size: 13px;
+            border: 1px solid #e2e8f0;
+            color: #475569;
+        }
+        tbody td.desc {
+            font-weight: 600;
+            color: #1A2980;
+        }
+        tbody tr:nth-child(even) {
+            background: rgba(26,41,128,0.02);
+        }
+
+        /* Totals */
+        .totals-wrap {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 20px;
+        }
+        .totals {
+            width: 380px;
+            font-size: 13px;
+        }
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 16px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .total-row .label { color: #64748b; font-weight: 600; }
+        .total-row .value { font-weight: 700; }
+        .grand-total-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border-top: 2px solid #1A2980;
+        }
+        .grand-total-row .label {
+            color: #1A2980;
+            font-weight: 800;
+            font-size: 16px;
+        }
+        .grand-total-row .value {
+            font-weight: 800;
+            font-size: 18px;
+            color: #b91c1c;
+        }
+
+        /* Bottom sections */
+        .bottom-sections {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        .bottom-section { flex: 1; }
+        .section-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+        .amount-words {
+            padding: 12px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            font-style: italic;
+            font-weight: 600;
+            color: #1A2980;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .bank-details {
+            padding: 12px;
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+        }
+        .bank-row {
+            display: flex;
+            margin-bottom: 4px;
+            font-size: 12px;
+        }
+        .bank-row .bl { width: 120px; color: #64748b; font-weight: 600; }
+        .bank-row .bv { font-weight: 700; color: #1A2980; }
+        .bank-row .bv.acct { font-size: 14px; font-weight: 800; letter-spacing: 1px; }
+
+        /* Signatures */
+        .signatures {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 32px;
+            margin-bottom: 30px;
+        }
+        .sig-block {
+            width: 250px;
+            text-align: center;
+        }
+        .sig-line {
+            border-bottom: 1px solid #1A2980;
+            height: 40px;
+            margin-bottom: 8px;
+        }
+        .sig-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A2980;
+        }
+
+        /* ─── FOOTER ─── */
+        .footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+        }
+        .footer-blue-thin {
+            height: 4px;
+            background: #1A2980;
+        }
+        .footer-red {
+            height: 12px;
+            background: #b91c1c;
+        }
+        .footer-blue-thick {
+            height: 45px;
+            background: #1A2980;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .footer-text {
+            font-size: 14px;
+            color: white;
+            font-weight: 700;
+            font-style: italic;
+            letter-spacing: 0.5px;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <!-- HEADER -->
+        <div class="header">
+            <div class="header-red"></div>
+            <div class="header-blue"></div>
+            <div class="header-accent"></div>
+            <div class="header-content">
+                <div class="header-left">
+                    <img src="/logo.png" alt="Latuns Logo" />
+                    <div class="header-tagline">Your Tagline Space</div>
+                </div>
+                <div class="header-right">
+                    <div class="header-title">INVOICE</div>
+                    <div class="header-docnum">L26APR001</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BODY -->
+        <div class="body-content">
+            <!-- Meta row -->
+            <div class="meta-row">
+                <div class="meta-address">
+                    <div>Suite 18 & 19, Fundex House, behind Glory Tabernacle Ministry,</div>
+                    <div>Ashi-Bodija Road, Bodija, Ibadan.</div>
+                    <div>Tel: <strong>+23480-8797-3539, +23481-6573-4042</strong></div>
+                    <div>Email: <strong>info@latuns.com</strong></div>
+                    <div>Web: <strong>www.latuns.com</strong></div>
+                </div>
+                <div class="meta-right">
+                    <div class="meta-date">Date: Apr 29, 2026</div>
+                    <div class="badge">GERARD</div>
+                </div>
+            </div>
+
+            <!-- Header note -->
+            <div class="header-note">MAin Building</div>
+
+            <!-- Client -->
+            <div class="client-block">
+                <div class="client-label">Quotation For</div>
+                <div class="client-name">Adekunye Samuel</div>
+                <div class="client-address">Ede, Osun</div>
+            </div>
+
+            <!-- Table -->
+            <table>
+                <thead>
+                    <tr>
+                        <th style="text-align:left">Description</th>
+                        <th style="text-align:center; width:80px">Qty</th>
+                        <th style="text-align:center; width:80px">Unit</th>
+                        <th style="text-align:right; width:120px">Cost (₦)</th>
+                        <th style="text-align:right; width:140px">Total (₦)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="desc">Roof Profile</td>
+                        <td style="text-align:center">12</td>
+                        <td style="text-align:center">sqm</td>
+                        <td style="text-align:right">5,200.00</td>
+                        <td style="text-align:right">62,400.00</td>
+                    </tr>
+                    <tr>
+                        <td class="desc">Ridge Cap</td>
+                        <td style="text-align:center">12</td>
+                        <td style="text-align:center">m</td>
+                        <td style="text-align:right">2,200.00</td>
+                        <td style="text-align:right">26,400.00</td>
+                    </tr>
+                    <tr>
+                        <td class="desc">Valley Gutter</td>
+                        <td style="text-align:center">13</td>
+                        <td style="text-align:center">m</td>
+                        <td style="text-align:right">3,050.00</td>
+                        <td style="text-align:right">39,650.00</td>
+                    </tr>
+                    <tr>
+                        <td class="desc">Side Cap</td>
+                        <td style="text-align:center">9</td>
+                        <td style="text-align:center">m</td>
+                        <td style="text-align:right">2,050.00</td>
+                        <td style="text-align:right">18,450.00</td>
+                    </tr>
+                    <tr>
+                        <td class="desc">Sun Breaker</td>
+                        <td style="text-align:center">12</td>
+                        <td style="text-align:center">pcs</td>
+                        <td style="text-align:right">12,500.00</td>
+                        <td style="text-align:right">150,000.00</td>
+                    </tr>
+                    <tr>
+                        <td class="desc">Sealant Gum</td>
+                        <td style="text-align:center">12</td>
+                        <td style="text-align:center">pcs</td>
+                        <td style="text-align:right">6,000.00</td>
+                        <td style="text-align:right">72,000.00</td>
+                    </tr>
+                    <tr>
+                        <td class="desc">Antirust Treated Nails</td>
+                        <td style="text-align:center">12</td>
+                        <td style="text-align:center">pks</td>
+                        <td style="text-align:right">12,500.00</td>
+                        <td style="text-align:right">150,000.00</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Totals -->
+            <div class="totals-wrap">
+                <div class="totals">
+                    <div class="total-row">
+                        <span class="label">Total</span>
+                        <span class="value">₦1,285,676.00</span>
+                    </div>
+                    <div class="total-row">
+                        <span class="label">Sundries/Margin</span>
+                        <span class="value">₦0.00</span>
+                    </div>
+                    <div class="total-row" style="border-bottom: 2px solid #1A2980;">
+                        <span class="label">Transportation</span>
+                        <span class="value">₦766,776.00</span>
+                    </div>
+                    <div class="grand-total-row">
+                        <span class="label">GRAND TOTAL</span>
+                        <span class="value">₦1,285,676.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom sections -->
+            <div class="bottom-sections">
+                <div class="bottom-section">
+                    <div class="section-label">Amount in Words</div>
+                    <div class="amount-words">
+                        One Million Two Hundred and Eighty Five Thousand Six Hundred and Seventy Six Naira Only.
+                    </div>
+                </div>
+                <div class="bottom-section">
+                    <div class="section-label">Bank Details</div>
+                    <div class="bank-details">
+                        <div class="bank-row">
+                            <span class="bl">Bank Name:</span>
+                            <span class="bv">Zenith Bank Plc</span>
+                        </div>
+                        <div class="bank-row">
+                            <span class="bl">Account Name:</span>
+                            <span class="bv">FCMB</span>
+                        </div>
+                        <div class="bank-row">
+                            <span class="bl">Account No:</span>
+                            <span class="bv acct">1017712535</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Signatures -->
+            <div class="signatures">
+                <div class="sig-block">
+                    <div class="sig-line"></div>
+                    <div class="sig-label">Authorized Signature</div>
+                </div>
+                <div class="sig-block">
+                    <div class="sig-line"></div>
+                    <div class="sig-label">Client Signature / Stamp</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <div class="footer-blue-thin"></div>
+            <div class="footer-red"></div>
+            <div class="footer-blue-thick">
+                <div class="footer-text">Your reliable roofing partner...</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  erp:
+    build: .
+    container_name: latuns_erp
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # - ENCRYPTION_KEY=${ENCRYPTION_KEY} # Passed from host environment
+    volumes:
+      - ./latuns.db:/app/latuns.db
+      - ./backups:/app/backups
+      - ./upload:/app/upload

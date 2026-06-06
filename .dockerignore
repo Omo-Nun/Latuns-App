@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+npm-debug.log
+latuns.db
+latuns.db-journal
+backups/
+upload/
+scratch/
+README.md
+implementation_plan.md
