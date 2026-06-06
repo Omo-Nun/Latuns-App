@@ -17,7 +17,7 @@ export async function GET(req: Request) {
         const nodeIp = process.env.NODE_IP || getSetting('nodeIp', '192.168.1.100');
         const lastBackup = getSetting('lastBackup', 'Never');
         const lastHeartbeat = getSetting('lastHeartbeat', 'Never');
-        const handoverRedirectUrl = getSetting('handover_redirect_url', null);
+        const handoverRedirectUrl = getSetting('handover_redirect_url', '');
 
         // Ping peer node if address is configured
         const peerAddress = process.env.PEER_NODE_ADDRESS;
