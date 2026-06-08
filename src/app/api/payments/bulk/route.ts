@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { payments, activityLogs, clients } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
 
 export async function POST(request: Request) {
     try {
@@ -10,43 +12,37 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Invalid allocations' }, { status: 400 });
         }
 
-        db.exec('BEGIN TRANSACTION');
-        try {
-            const pStmt = db.prepare(`
-                INSERT INTO payments (quotation_id, amount, date, note)
-                VALUES (?, ?, ?, ?)
-            `);
+        let totalSum = 0;
 
-            let totalSum = 0;
+        await db.transaction(async (tx) => {
             const refIds: number[] = [];
 
             for (const alloc of allocations) {
                 const amount = parseFloat(alloc.amount);
                 if (isNaN(amount) || amount <= 0) continue;
                 
-                pStmt.run(alloc.quotationId, amount, date || new Date().toISOString(), alloc.note || 'Bulk Payment Allocation');
+                await tx.insert(payments).values({
+                    quotationId: alloc.quotationId,
+                    amount: amount,
+                    date: date ? new Date(date) : new Date(),
+                    note: alloc.note || 'Bulk Payment Allocation'
+                });
                 totalSum += amount;
                 refIds.push(alloc.quotationId);
             }
 
             // Log Activity for Client if possible
             if (clientId) {
-                db.prepare(`
-                    INSERT INTO activity_logs (client_id, action_type, description)
-                    VALUES (?, 'payment_received', ?)
-                `).run(
-                    clientId, 
-                    `Recorded Bulk Payment of ₦${totalSum.toLocaleString()} allocated across ${refIds.length} projects.`
-                );
-                db.prepare('UPDATE clients SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(clientId);
+                await tx.insert(activityLogs).values({
+                    clientId: clientId,
+                    actionType: 'payment_received',
+                    description: `Recorded Bulk Payment of ₦${totalSum.toLocaleString()} allocated across ${refIds.length} projects.`
+                });
+                await tx.update(clients).set({ updatedAt: new Date() }).where(eq(clients.id, clientId));
             }
+        });
 
-            db.exec('COMMIT');
-            return NextResponse.json({ success: true, total: totalSum });
-        } catch (e) {
-            db.exec('ROLLBACK');
-            throw e;
-        }
+        return NextResponse.json({ success: true, total: totalSum });
     } catch (error: any) {
         console.error(error);
         return NextResponse.json({ error: error.message || 'Failed to process bulk payment' }, { status: 500 });

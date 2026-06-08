@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { payments, quotations, activityLogs, clients } from '@/lib/schema';
+import { eq, and, desc } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { id } = await params;
-        const payments = db.prepare('SELECT * FROM payments WHERE quotation_id = ? ORDER BY date DESC').all(id);
-        return NextResponse.json(payments);
+        const { id: idStr } = await params;
+        const id = Number(idStr);
+        const paymentsList = await db.select().from(payments).where(eq(payments.quotationId, id)).orderBy(desc(payments.date));
+        return NextResponse.json(paymentsList);
     } catch (error) {
         return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 });
     }
@@ -15,7 +18,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { id: quotation_id } = await params;
+        const { id: idStr } = await params;
+        const quotation_id = Number(idStr);
         const data = await request.json();
         const { amount, date, note } = data;
 
@@ -23,29 +27,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             return NextResponse.json({ error: 'Amount and date are required' }, { status: 400 });
         }
 
-        const stmt = db.prepare(`
-      INSERT INTO payments(quotation_id, amount, date, note)
-VALUES(?, ?, ?, ?)
-    `);
+        let newPaymentId = 0;
 
-        const info = stmt.run(quotation_id, amount, date, note || '');
+        await db.transaction(async (tx) => {
+            const insertResult = await tx.insert(payments).values({
+                quotationId: quotation_id,
+                amount: Number(amount),
+                date: new Date(date),
+                note: note || ''
+            }).returning({ id: payments.id });
+            
+            newPaymentId = insertResult[0].id;
 
-        // Log Activity & touch client updated_at
-        const quote = db.prepare('SELECT client_id, quote_number FROM quotations WHERE id = ?').get(quotation_id) as any;
-        if (quote && quote.client_id) {
-            db.prepare(`
-                INSERT INTO activity_logs (client_id, action_type, description, ref_id)
-                VALUES (?, ?, ?, ?)
-            `).run(
-                quote.client_id,
-                'payment',
-                `Recorded Payment of ₦${parseFloat(amount).toLocaleString()} for ${quote.quote_number || 'Quote'}`,
-                quotation_id
-            );
-            db.prepare('UPDATE clients SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(quote.client_id);
-        }
+            // Log Activity & touch client updated_at
+            const quoteRes = await tx.select({ clientId: quotations.clientId, quoteNumber: quotations.quoteNumber }).from(quotations).where(eq(quotations.id, quotation_id)).limit(1);
+            const quote = quoteRes[0];
+            
+            if (quote && quote.clientId) {
+                await tx.insert(activityLogs).values({
+                    clientId: quote.clientId,
+                    actionType: 'payment',
+                    description: `Recorded Payment of ₦${parseFloat(amount).toLocaleString()} for ${quote.quoteNumber || 'Quote'}`,
+                    refId: quotation_id
+                });
+                await tx.update(clients).set({ updatedAt: new Date() }).where(eq(clients.id, quote.clientId));
+            }
+        });
 
-        return NextResponse.json({ id: info.lastInsertRowid, ...data }, { status: 201 });
+        return NextResponse.json({ id: newPaymentId, ...data }, { status: 201 });
     } catch (error) {
         return NextResponse.json({ error: 'Failed to add payment' }, { status: 500 });
     }
@@ -53,7 +62,8 @@ VALUES(?, ?, ?, ?)
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { id: quotation_id } = await params;
+        const { id: idStr } = await params;
+        const quotation_id = Number(idStr);
         const data = await request.json();
         const { paymentId, amount, date, note } = data;
 
@@ -61,8 +71,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        const stmt = db.prepare('UPDATE payments SET amount = ?, date = ?, note = ? WHERE id = ? AND quotation_id = ?');
-        stmt.run(amount, date, note || null, paymentId, quotation_id);
+        await db.update(payments).set({
+            amount: Number(amount),
+            date: new Date(date),
+            note: note || null
+        }).where(and(eq(payments.id, Number(paymentId)), eq(payments.quotationId, quotation_id)));
 
         return NextResponse.json({ success: true });
     } catch (error: any) {

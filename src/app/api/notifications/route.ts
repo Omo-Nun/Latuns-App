@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { notifications } from '@/lib/schema';
+import { eq, and, desc, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,16 +14,20 @@ export async function GET(request: Request) {
         const url = new URL(request.url);
         const unreadOnly = url.searchParams.get('unread') === 'true';
         
-        let query = 'SELECT * FROM notifications WHERE user_id = ?';
-        if (unreadOnly) query += ' AND is_read = 0';
-        query += ' ORDER BY created_at DESC LIMIT 50';
+        const conditions = [eq(notifications.userId, session.user.id)];
+        if (unreadOnly) {
+            conditions.push(eq(notifications.isRead, false));
+        }
 
-        const notifications = db.prepare(query).all(session.user.id);
+        const notificationsList = await db.select().from(notifications)
+            .where(and(...conditions))
+            .orderBy(desc(notifications.createdAt))
+            .limit(50);
         
-        const unreadCount = db.prepare('SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0')
-            .get(session.user.id).count;
+        const countRes = await db.execute(sql.raw(`SELECT COUNT(*) as count FROM notifications WHERE user_id = ${session.user.id} AND is_read = false`));
+        const unreadCount = Number(countRes.rows[0].count);
 
-        return NextResponse.json({ notifications, unreadCount });
+        return NextResponse.json({ notifications: notificationsList, unreadCount });
     } catch (error) {
         return NextResponse.json({ error: 'Failed to fetch notifications' }, { status: 500 });
     }
@@ -35,9 +41,9 @@ export async function PUT(request: Request) {
         const { id, all } = await request.json();
 
         if (all) {
-            db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(session.user.id);
+            await db.update(notifications).set({ isRead: true }).where(eq(notifications.userId, session.user.id));
         } else if (id) {
-            db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?').run(id, session.user.id);
+            await db.update(notifications).set({ isRead: true }).where(and(eq(notifications.id, Number(id)), eq(notifications.userId, session.user.id)));
         }
 
         return NextResponse.json({ success: true });

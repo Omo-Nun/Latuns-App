@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { stockRequests, stockRequestItems, inventoryLogs, quotations, activityLogs, clients } from '@/lib/schema';
+import { eq, sql } from 'drizzle-orm';
 
 export async function PUT(
     request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { id } = await params;
+        const { id: idStr } = await params;
+        const id = Number(idStr);
 
-        const requestData = db.prepare("SELECT status, quotation_id FROM stock_requests WHERE id = ?").get(id) as any;
+        const requestDataRes = await db.select({ status: stockRequests.status, quotationId: stockRequests.quotationId }).from(stockRequests).where(eq(stockRequests.id, id)).limit(1);
+        const requestData = requestDataRes[0];
         if (!requestData) {
             return NextResponse.json({ error: 'Stock request not found' }, { status: 404 });
         }
@@ -17,56 +21,48 @@ export async function PUT(
             return NextResponse.json({ error: 'Request is not in revert pending state' }, { status: 400 });
         }
 
-        const items = db.prepare("SELECT * FROM stock_request_items WHERE request_id = ?").all(id) as any[];
+        const items = await db.select().from(stockRequestItems).where(eq(stockRequestItems.requestId, id));
 
-        db.exec('BEGIN TRANSACTION');
-        try {
-            const updateStockStmt = db.prepare('UPDATE inventory_items SET stock_qty = stock_qty + ? WHERE id = ?');
-            const logStmt = db.prepare('INSERT INTO inventory_logs (item_id, type, qty, note) VALUES (?, ?, ?, ?)');
-            const updateReqItemStmt = db.prepare('UPDATE stock_request_items SET approved_qty = 0 WHERE id = ?');
-
+        await db.transaction(async (tx) => {
             for (const item of items) {
-                if (item.approved_qty > 0) {
+                const approvedQty = item.approvedQty || 0;
+                if (approvedQty > 0) {
                     // Return stock to inventory
-                    updateStockStmt.run(item.approved_qty, item.inventory_item_id);
+                    await tx.execute(sql`UPDATE inventory_items SET stock_qty = stock_qty + ${approvedQty} WHERE id = ${item.inventoryItemId}`);
 
                     // Log the return
-                    logStmt.run(
-                        item.inventory_item_id, 
-                        'in', 
-                        item.approved_qty, 
-                        `Returned from Reversal of Quote #${requestData.quotation_id}`
-                    );
+                    await tx.insert(inventoryLogs).values({
+                        itemId: item.inventoryItemId,
+                        type: 'in',
+                        qty: approvedQty,
+                        note: `Returned from Reversal of Quote #${requestData.quotationId}`
+                    });
 
                     // Reset approved qty
-                    updateReqItemStmt.run(item.id);
+                    await tx.update(stockRequestItems).set({ approvedQty: 0 }).where(eq(stockRequestItems.id, item.id));
                 }
             }
 
             // Set status back to pending
-            db.prepare("UPDATE stock_requests SET status = 'pending' WHERE id = ?").run(id);
+            await tx.update(stockRequests).set({ status: 'pending' }).where(eq(stockRequests.id, id));
 
             // Log Activity
-            const quote = db.prepare('SELECT client_id, quote_number FROM quotations WHERE id = ?').get(requestData.quotation_id) as any;
-            if (quote && quote.client_id) {
-                db.prepare(`
-                    INSERT INTO activity_logs (client_id, action_type, description, ref_id)
-                    VALUES (?, ?, ?, ?)
-                `).run(
-                    quote.client_id, 
-                    'inventory', 
-                    `Confirmed reversal of stock release for ${quote.quote_number || 'Quote'}. Stock returned to warehouse.`, 
-                    requestData.quotation_id
-                );
-                db.prepare('UPDATE clients SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(quote.client_id);
+            if (requestData.quotationId) {
+                const quoteRes = await tx.select({ clientId: quotations.clientId, quoteNumber: quotations.quoteNumber }).from(quotations).where(eq(quotations.id, requestData.quotationId)).limit(1);
+                const quote = quoteRes[0];
+                if (quote && quote.clientId) {
+                    await tx.insert(activityLogs).values({
+                        clientId: quote.clientId,
+                        actionType: 'inventory',
+                        description: `Confirmed reversal of stock release for ${quote.quoteNumber || 'Quote'}. Stock returned to warehouse.`,
+                        refId: requestData.quotationId
+                    });
+                    await tx.update(clients).set({ updatedAt: new Date() }).where(eq(clients.id, quote.clientId));
+                }
             }
+        });
 
-            db.exec('COMMIT');
-            return NextResponse.json({ success: true });
-        } catch (e) {
-            db.exec('ROLLBACK');
-            throw e;
-        }
+        return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Failed to confirm reversal:', error);
         return NextResponse.json({ error: 'Failed to confirm reversal' }, { status: 500 });

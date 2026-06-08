@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { customCharts } from '@/lib/schema';
+import { desc } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
-        const charts = db.prepare('SELECT * FROM custom_charts ORDER BY created_at DESC').all();
+        const charts = await db.select().from(customCharts).orderBy(desc(customCharts.createdAt));
         return NextResponse.json(charts);
     } catch (error) {
         return NextResponse.json({ error: 'Failed to fetch custom charts' }, { status: 500 });
@@ -21,10 +23,12 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Name and config are required' }, { status: 400 });
         }
 
-        const stmt = db.prepare('INSERT INTO custom_charts (name, config) VALUES (?, ?)');
-        const result = stmt.run(name, JSON.stringify(config));
+        const result = await db.insert(customCharts).values({
+            name,
+            config: JSON.stringify(config)
+        }).returning({ id: customCharts.id });
 
-        return NextResponse.json({ id: result.lastInsertRowid, success: true });
+        return NextResponse.json({ id: result[0].id, success: true });
     } catch (error) {
         return NextResponse.json({ error: 'Failed to save chart' }, { status: 500 });
     }

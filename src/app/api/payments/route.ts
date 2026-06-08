@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { checkPermission } from '@/lib/auth';
+import { sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ export async function GET() {
             return NextResponse.json({ error: 'Unauthorized access to Finances' }, { status: 403 });
         }
 
-        const rawPayments = db.prepare(`
+        const rawPaymentsRes = await db.execute(sql.raw(`
             SELECT 
                 p.id, p.quotation_id, p.amount, p.date, p.note, p.created_at,
                 q.quote_number, q.client_name, q.project_type, q.transportation, q.sundries,
@@ -20,7 +21,8 @@ export async function GET() {
             FROM payments p
             LEFT JOIN quotations q ON p.quotation_id = q.id
             ORDER BY p.date DESC, p.created_at DESC
-        `).all();
+        `));
+        const rawPayments = rawPaymentsRes.rows;
 
         return NextResponse.json(rawPayments);
     } catch (error) {

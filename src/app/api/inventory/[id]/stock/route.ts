@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { inventoryItems, inventoryLogs } from '@/lib/schema';
+import { eq, sql } from 'drizzle-orm';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -12,39 +14,36 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         }
 
         if (type === 'out') {
-            const currentItem = db.prepare('SELECT stock_qty FROM inventory_items WHERE id = ?').get(id) as { stock_qty: number } | undefined;
-            if (!currentItem || currentItem.stock_qty < qty) {
-                return NextResponse.json({ error: `Insufficient stock. Current balance: ${currentItem?.stock_qty || 0}` }, { status: 400 });
+            const currentItemRes = await db.select({ stockQty: inventoryItems.stockQty }).from(inventoryItems).where(eq(inventoryItems.id, id)).limit(1);
+            const currentItem = currentItemRes[0];
+            const currentStock = currentItem?.stockQty || 0;
+            if (!currentItem || currentStock < qty) {
+                return NextResponse.json({ error: `Insufficient stock. Current balance: ${currentStock}` }, { status: 400 });
             }
         }
 
-        db.exec('BEGIN TRANSACTION');
-        try {
+        await db.transaction(async (tx) => {
             // Log the movement
-            const logStmt = db.prepare(`
-                INSERT INTO inventory_logs (item_id, type, qty, note)
-                VALUES (?, ?, ?, ?)
-            `);
             const finalNote = [reference ? `REF: ${reference}` : '', note].filter(Boolean).join(' | ');
-            logStmt.run(id, type, qty, finalNote);
+            await tx.insert(inventoryLogs).values({
+                itemId: id,
+                type,
+                qty: Number(qty),
+                note: finalNote
+            });
 
             // Update the master stock
             const modifier = type === 'in' ? '+' : '-';
-            const updStmt = db.prepare(`
+            await tx.execute(sql`
                 UPDATE inventory_items 
-                SET stock_qty = stock_qty ${modifier} ? 
-                WHERE id = ?
+                SET stock_qty = stock_qty ${sql.raw(modifier)} ${qty} 
+                WHERE id = ${id}
             `);
-            updStmt.run(qty, id);
-
-            db.exec('COMMIT');
-        } catch (e) {
-            db.exec('ROLLBACK');
-            throw e;
-        }
+        });
 
         return NextResponse.json({ success: true }, { status: 201 });
     } catch (error) {
+        console.error('Failed to update stock', error);
         return NextResponse.json({ error: 'Failed to update stock' }, { status: 500 });
     }
 }

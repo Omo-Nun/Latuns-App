@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { stockRequests, quotations, activityLogs } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
 
 export async function POST(
     request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { id } = await params;
+        const { id: idStr } = await params;
+        const id = Number(idStr);
 
-        const requestData = db.prepare("SELECT status, quotation_id FROM stock_requests WHERE id = ?").get(id) as any;
+        const requestDataRes = await db.select({ status: stockRequests.status, quotationId: stockRequests.quotationId }).from(stockRequests).where(eq(stockRequests.id, id)).limit(1);
+        const requestData = requestDataRes[0];
         if (!requestData) {
             return NextResponse.json({ error: 'Stock request not found' }, { status: 404 });
         }
@@ -17,30 +21,25 @@ export async function POST(
             return NextResponse.json({ error: 'Only approved requests can be reverted' }, { status: 400 });
         }
 
-        db.exec('BEGIN TRANSACTION');
-        try {
-            db.prepare("UPDATE stock_requests SET status = 'revert_pending' WHERE id = ?").run(id);
+        await db.transaction(async (tx) => {
+            await tx.update(stockRequests).set({ status: 'revert_pending' }).where(eq(stockRequests.id, id));
 
             // Log Activity
-            const quote = db.prepare('SELECT client_id, quote_number FROM quotations WHERE id = ?').get(requestData.quotation_id) as any;
-            if (quote && quote.client_id) {
-                db.prepare(`
-                    INSERT INTO activity_logs (client_id, action_type, description, ref_id)
-                    VALUES (?, ?, ?, ?)
-                `).run(
-                    quote.client_id, 
-                    'inventory', 
-                    `Reversal requested for stock release of ${quote.quote_number || 'Quote'}`, 
-                    requestData.quotation_id
-                );
+            if (requestData.quotationId) {
+                const quoteRes = await tx.select({ clientId: quotations.clientId, quoteNumber: quotations.quoteNumber }).from(quotations).where(eq(quotations.id, requestData.quotationId)).limit(1);
+                const quote = quoteRes[0];
+                if (quote && quote.clientId) {
+                    await tx.insert(activityLogs).values({
+                        clientId: quote.clientId,
+                        actionType: 'inventory',
+                        description: `Reversal requested for stock release of ${quote.quoteNumber || 'Quote'}`,
+                        refId: requestData.quotationId
+                    });
+                }
             }
+        });
 
-            db.exec('COMMIT');
-            return NextResponse.json({ success: true });
-        } catch (e) {
-            db.exec('ROLLBACK');
-            throw e;
-        }
+        return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Failed to request reversal:', error);
         return NextResponse.json({ error: 'Failed to request reversal' }, { status: 500 });

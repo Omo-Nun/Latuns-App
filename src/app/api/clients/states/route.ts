@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,14 +15,15 @@ const NIGERIAN_STATES = [
 export async function GET() {
     try {
         // Fetch usage counts from database
-        const usageCounts = db.prepare(`
+        const usageCountsRes = await db.execute(sql.raw(`
             SELECT state, COUNT(*) as count 
             FROM clients 
             WHERE state IS NOT NULL AND state != ''
             GROUP BY state
-        `).all() as { state: string, count: number }[];
+        `));
+        const usageCounts = usageCountsRes.rows as { state: string, count: number }[];
 
-        const usageMap = new Map(usageCounts.map(u => [u.state.toLowerCase(), u.count]));
+        const usageMap = new Map(usageCounts.map(u => [u.state.toLowerCase(), Number(u.count)]));
 
         // Sort all states by frequency, then alphabetically
         const sortedStates = [...NIGERIAN_STATES].sort((a, b) => {

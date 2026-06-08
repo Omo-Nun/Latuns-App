@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import { subPermissions, staffRoles } from '@/lib/schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function GET(
     request: Request,
@@ -13,8 +15,11 @@ export async function GET(
         if (!session || (session.user.role_name !== 'Admin' && String(session.user.role_id) !== String(roleId))) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
-        const subPermissions = db.prepare('SELECT * FROM sub_permissions WHERE role_id = ?').all(roleId);
-        return NextResponse.json(subPermissions);
+        const result = await db.select().from(subPermissions).where(eq(subPermissions.roleId, Number(roleId)));
+        return NextResponse.json(result.map(p => ({
+            ...p,
+            sub_module: p.subModule
+        })));
     } catch (error) {
         return NextResponse.json({ error: 'Failed to fetch sub-permissions' }, { status: 500 });
     }
@@ -30,7 +35,8 @@ export async function PUT(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
-        const { id: roleId } = await params;
+        const { id: roleIdStr } = await params;
+        const roleId = Number(roleIdStr);
         const data = await request.json();
         const { module, sub_module, allowed } = data;
 
@@ -38,24 +44,28 @@ export async function PUT(
             return NextResponse.json({ error: 'Module and Sub-module are required' }, { status: 400 });
         }
 
-        const allowedVal = allowed ? 1 : 0;
+        const allowedVal = allowed ? true : false;
 
-        db.prepare(`
-            UPDATE sub_permissions 
-            SET allowed = ?
-            WHERE role_id = ? AND module = ? AND sub_module = ?
-        `).run(allowedVal, roleId, module, sub_module);
+        await db.update(subPermissions)
+            .set({ allowed: allowedVal })
+            .where(and(
+                eq(subPermissions.roleId, roleId),
+                eq(subPermissions.module, module),
+                eq(subPermissions.subModule, sub_module)
+            ));
 
         // Audit Log
-        const role = db.prepare('SELECT name FROM staff_roles WHERE id = ?').get(roleId) as { name: string };
-        logAudit(
+        const roleRes = await db.select({ name: staffRoles.name }).from(staffRoles).where(eq(staffRoles.id, roleId)).limit(1);
+        const role = roleRes[0];
+        
+        await logAudit(
             session.user.id, 
             session.user.username, 
             'Update', 
             'Settings', 
             `Updated sub-permissions for role: ${role?.name || roleId}, module: ${module}, sub-module: ${sub_module} to ${allowed ? 'Allowed' : 'Blocked'}`, 
             'role_sub_permissions', 
-            Number(roleId)
+            roleId
         );
 
         return NextResponse.json({ success: true });

@@ -1,5 +1,7 @@
 import { cookies } from 'next/headers';
 import db from './db';
+import { sessions, users, staffRoles, permissions, subPermissions } from './schema';
+import { eq, and, lt, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 
 const SCRYPT_PARAMS = {
@@ -44,37 +46,49 @@ export async function getSession() {
     try {
         // Prune expired sessions to prevent table bloat
         try {
-            db.prepare(`DELETE FROM sessions WHERE expires_at <= DATETIME('now')`).run();
+            await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
         } catch (e) {
             // Ignore if DB is locked
         }
 
-        const session = db.prepare(`
-            SELECT s.*, u.username, u.role_id, r.name as role_name 
-            FROM sessions s
-            JOIN users u ON s.user_id = u.id
-            JOIN staff_roles r ON u.role_id = r.id
-            WHERE s.id = ? AND s.expires_at > DATETIME('now')
-        `).get(sessionId) as any;
+        const result = await db
+            .select({
+                userId: sessions.userId,
+                username: users.username,
+                roleId: users.roleId,
+                roleName: staffRoles.name,
+                lastActive: sessions.lastActive,
+            })
+            .from(sessions)
+            .innerJoin(users, eq(sessions.userId, users.id))
+            .innerJoin(staffRoles, eq(users.roleId, staffRoles.id))
+            .where(and(
+                eq(sessions.id, sessionId),
+                sql`${sessions.expiresAt} > NOW()`
+            ))
+            .limit(1);
 
+        const session = result[0];
         if (!session) return null;
 
-        // Bump last_active timestamp if it's been more than 1 minute to reduce write locks
-        const lastActiveMs = session.last_active ? new Date(session.last_active).getTime() : 0;
+        // Bump last_active timestamp if it's been more than 1 minute to reduce write churn
+        const lastActiveMs = session.lastActive ? new Date(session.lastActive).getTime() : 0;
         if (Date.now() - lastActiveMs > 60000) {
             try {
-                db.prepare(`UPDATE sessions SET last_active = DATETIME('now') WHERE id = ?`).run(sessionId);
+                await db.update(sessions)
+                    .set({ lastActive: new Date() })
+                    .where(eq(sessions.id, sessionId));
             } catch (e) {
-                // Ignore DB locks during silent bumps
+                // Ignore errors during silent bumps
             }
         }
 
         return {
             user: {
-                id: session.user_id,
+                id: session.userId,
                 username: session.username,
-                role_id: session.role_id,
-                role_name: session.role_name
+                role_id: session.roleId,
+                role_name: session.roleName
             }
         };
     } catch (error) {
@@ -84,8 +98,13 @@ export async function getSession() {
 
 export async function getPermissions(roleId: number) {
     try {
-        const permissions = db.prepare('SELECT * FROM permissions WHERE role_id = ?').all(roleId) as any[];
-        return permissions;
+        const result = await db.select().from(permissions).where(eq(permissions.roleId, roleId));
+        return result.map(p => ({
+            ...p,
+            can_view: p.canView,
+            can_edit: p.canEdit,
+            can_delete: p.canDelete
+        }));
     } catch (error) {
         return [];
     }
@@ -95,11 +114,23 @@ export async function checkPermission(module: string, action: 'can_view' | 'can_
     const session = await getSession();
     if (!session) return false;
     if (session.user.role_name === 'Admin') return true;
+    if (!session.user.role_id) return false;
 
     try {
-        const perm = db.prepare(`SELECT ${action} FROM permissions WHERE role_id = ? AND module = ?`)
-            .get(session.user.role_id, module) as any;
-        return perm && perm[action] === 1;
+        const actionColumn = action === 'can_view' ? permissions.canView
+            : action === 'can_edit' ? permissions.canEdit
+            : permissions.canDelete;
+
+        const result = await db
+            .select({ allowed: actionColumn })
+            .from(permissions)
+            .where(and(
+                eq(permissions.roleId, session.user.role_id),
+                eq(permissions.module, module)
+            ))
+            .limit(1);
+
+        return result[0]?.allowed === true;
     } catch (error) {
         return false;
     }
@@ -129,14 +160,22 @@ export async function requireSubPermission(module: string, sub_module: string) {
 
     // Admins have all sub-permissions
     if (session.user.role_name === 'Admin') return null;
+    if (!session.user.role_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const subPerm = db.prepare('SELECT allowed FROM sub_permissions WHERE role_id = ? AND module = ? AND sub_module = ?')
-        .get(session.user.role_id, module, sub_module) as { allowed: number } | undefined;
+    const result = await db
+        .select({ allowed: subPermissions.allowed })
+        .from(subPermissions)
+        .where(and(
+            eq(subPermissions.roleId, session.user.role_id),
+            eq(subPermissions.module, module),
+            eq(subPermissions.subModule, sub_module)
+        ))
+        .limit(1);
 
+    const subPerm = result[0];
     if (!subPerm || !subPerm.allowed) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     return null;
 }
-

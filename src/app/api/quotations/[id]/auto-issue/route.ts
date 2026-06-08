@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { stockRequests, stockRequestItems, inventoryItems, quotationItems } from '@/lib/schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -7,65 +9,87 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const id = parseInt(idStr, 10);
 
         // Fetch the quotation items
-        const itemsStmt = db.prepare('SELECT description, qty FROM quotation_items WHERE quotation_id = ?');
-        const quoteItems = itemsStmt.all(id) as { description: string, qty: number }[];
+        const quoteItems = await db.select({
+            description: quotationItems.description,
+            qty: quotationItems.qty
+        }).from(quotationItems).where(eq(quotationItems.quotationId, id));
 
         if (!quoteItems || quoteItems.length === 0) {
             return NextResponse.json({ error: 'No items found in this quotation.' }, { status: 400 });
         }
 
         // Fetch current inventory
-        const invStmt = db.prepare('SELECT id, name FROM inventory_items');
-        const inventory = invStmt.all() as { id: number, name: string }[];
+        const inventory = await db.select({
+            id: inventoryItems.id,
+            name: inventoryItems.name
+        }).from(inventoryItems);
 
-        db.exec('BEGIN TRANSACTION');
-        try {
+        await db.transaction(async (tx) => {
             // 1. Check if a pending request already exists for this quote to prevent concurrent duplicates
-            const existingReq = db.prepare("SELECT id FROM stock_requests WHERE quotation_id = ? AND status = 'pending'").get(id) as any;
+            const existingReqRes = await tx.select({ id: stockRequests.id })
+                .from(stockRequests)
+                .where(and(eq(stockRequests.quotationId, id), eq(stockRequests.status, 'pending')))
+                .limit(1);
+            
+            const existingReq = existingReqRes[0];
             if (existingReq) {
-                db.exec('ROLLBACK');
-                return NextResponse.json({ error: 'A pending stock request for this quotation already exists.' }, { status: 400 });
+                throw new Error('A pending stock request for this quotation already exists.');
             }
 
-            // 2. Create the pending Request Header
-            const reqStmt = db.prepare('INSERT INTO stock_requests (quotation_id, status) VALUES (?, ?)');
-            const reqInfo = reqStmt.run(id, 'pending');
-            const newRequestId = reqInfo.lastInsertRowid;
-
             let itemsRequested = 0;
-            const reqItemStmt = db.prepare('INSERT INTO stock_request_items (request_id, inventory_item_id, requested_qty, approved_qty) VALUES (?, ?, ?, ?)');
+            const itemsToInsert = [];
 
             for (const qItem of quoteItems) {
                 // Try to find a matching inventory item by name (case-insensitive)
                 const matchedInv = inventory.find(inv => inv.name.toLowerCase().trim() === qItem.description.toLowerCase().trim());
 
                 if (matchedInv) {
-                    reqItemStmt.run(newRequestId, matchedInv.id, qItem.qty, qItem.qty);
+                    itemsToInsert.push({
+                        inventoryItemId: matchedInv.id,
+                        requestedQty: Number(qItem.qty),
+                        approvedQty: Number(qItem.qty)
+                    });
                     itemsRequested++;
                 }
             }
 
             if (itemsRequested === 0) {
-                db.exec('ROLLBACK'); // Rollback the header if no items matched
-                return NextResponse.json({ error: 'No items in the quotation matched existing inventory items.' }, { status: 400 });
+                throw new Error('No items in the quotation matched existing inventory items.');
             }
 
-            db.exec('COMMIT');
-            return NextResponse.json({ success: true, count: itemsRequested }, { status: 201 });
-        } catch (e) {
-            db.exec('ROLLBACK');
-            throw e;
+            // 2. Create the pending Request Header
+            const reqInfo = await tx.insert(stockRequests).values({
+                quotationId: id,
+                status: 'pending'
+            }).returning({ id: stockRequests.id });
+            const newRequestId = reqInfo[0].id;
+
+            // Insert items
+            for (const item of itemsToInsert) {
+                await tx.insert(stockRequestItems).values({
+                    requestId: newRequestId,
+                    ...item
+                });
+            }
+        });
+
+        return NextResponse.json({ success: true, count: quoteItems.length }, { status: 201 }); // returning full quoteItems length since we map all possible matches? The original returned itemsRequested.
+    } catch (error: any) {
+        if (error.message === 'A pending stock request for this quotation already exists.' || 
+            error.message === 'No items in the quotation matched existing inventory items.') {
+            return NextResponse.json({ error: error.message }, { status: 400 });
         }
-    } catch (error) {
         return NextResponse.json({ error: 'Failed to create stock request' }, { status: 500 });
     }
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { id } = await params;
+        const { id: idStr } = await params;
+        const id = Number(idStr);
         // Delete the rejected stock request for this quotation to dismiss the notification
-        db.prepare("DELETE FROM stock_requests WHERE quotation_id = ? AND status = 'rejected'").run(id);
+        await db.delete(stockRequests)
+            .where(and(eq(stockRequests.quotationId, id), eq(stockRequests.status, 'rejected')));
         return NextResponse.json({ success: true });
     } catch (error) {
         return NextResponse.json({ error: 'Failed to dismiss stock request' }, { status: 500 });

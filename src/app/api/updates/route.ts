@@ -1,17 +1,20 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { quotations, clients } from '@/lib/schema';
+import { eq, isNull, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
         // Fetch quotations that don't have a structured client_id
-        const unlinked = db.prepare(`
+        const unlinkedRes = await db.execute(sql.raw(`
             SELECT id, quote_number, client_name, client_phone, created_at, project_type 
             FROM quotations 
-            WHERE client_id IS NULL OR client_id = ''
+            WHERE client_id IS NULL
             ORDER BY client_name ASC
-        `).all();
+        `));
+        const unlinked = unlinkedRes.rows;
 
         // Group them by identical name and phone pair
         const groups: Record<string, any> = {};
@@ -45,37 +48,38 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
         }
 
-        db.exec('BEGIN TRANSACTION');
-        try {
-            // First, check if this EXACT client already exists natively
-            let clientId: number | bigint | null = null;
-            const existing = db.prepare(`
-                SELECT id FROM clients 
-                WHERE name = ? AND (phone = ? OR (phone = '' AND ? = '')) 
-                LIMIT 1
-            `).get(client_name, client_phone || '', client_phone || '') as any;
+        let clientIdOut: number | null = null;
 
+        await db.transaction(async (tx) => {
+            // First, check if this EXACT client already exists natively
+            const safePhone = client_phone || '';
+            const existingRes = await tx.execute(sql.raw(`
+                SELECT id FROM clients 
+                WHERE name = '${client_name}' AND (phone = '${safePhone}' OR (phone = '' AND '${safePhone}' = '')) 
+                LIMIT 1
+            `));
+            const existing = existingRes.rows[0];
+
+            let clientId: number;
             if (existing) {
-                clientId = existing.id;
+                clientId = Number(existing.id);
             } else {
-                const cStmt = db.prepare('INSERT INTO clients (name, phone) VALUES (?, ?)');
-                const info = cStmt.run(client_name, client_phone || '');
-                clientId = info.lastInsertRowid;
+                const cStmt = await tx.insert(clients).values({
+                    name: client_name,
+                    phone: safePhone
+                }).returning({ id: clients.id });
+                clientId = cStmt[0].id;
             }
+
+            clientIdOut = clientId;
 
             // Map all target quotations to this centralized Profile
-            const updateStmt = db.prepare('UPDATE quotations SET client_id = ? WHERE id = ?');
             for (const qId of quotation_ids) {
-                updateStmt.run(clientId, qId);
+                await tx.update(quotations).set({ clientId: clientId }).where(eq(quotations.id, Number(qId)));
             }
+        });
 
-            db.exec('COMMIT');
-            return NextResponse.json({ success: true, client_id: Number(clientId) });
-        } catch (e) {
-            db.exec('ROLLBACK');
-            throw e;
-        }
-
+        return NextResponse.json({ success: true, client_id: clientIdOut });
     } catch (error) {
         console.error(error);
         return NextResponse.json({ error: 'Failed to merge quotations' }, { status: 500 });

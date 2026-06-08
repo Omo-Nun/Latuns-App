@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { requirePermission } from '@/lib/auth';
+import { expenses } from '@/lib/schema';
+import { desc } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,8 +11,8 @@ export async function GET() {
     if (error) return error;
 
     try {
-        const expenses = db.prepare('SELECT * FROM expenses ORDER BY date DESC, created_at DESC').all();
-        return NextResponse.json(expenses);
+        const expensesList = await db.select().from(expenses).orderBy(desc(expenses.date), desc(expenses.createdAt));
+        return NextResponse.json(expensesList);
     } catch (error) {
         return NextResponse.json({ error: 'Failed to fetch expenses' }, { status: 500 });
     }
@@ -33,10 +35,14 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Amount must be a positive number' }, { status: 400 });
         }
 
-        const stmt = db.prepare('INSERT INTO expenses (category, amount, date, note) VALUES (?, ?, ?, ?)');
-        const info = stmt.run(category, amount, date, note || '');
+        const insertResult = await db.insert(expenses).values({
+            category,
+            amount: numericAmount,
+            date: new Date(date),
+            note: note || ''
+        }).returning({ id: expenses.id });
 
-        return NextResponse.json({ id: info.lastInsertRowid }, { status: 201 });
+        return NextResponse.json({ id: insertResult[0].id }, { status: 201 });
     } catch (error) {
         return NextResponse.json({ error: 'Failed to record expense' }, { status: 500 });
     }

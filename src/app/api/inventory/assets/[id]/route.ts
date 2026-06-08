@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { companyAssets } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { id } = await params;
+        const { id: idStr } = await params;
+        const id = Number(idStr);
         const data = await request.json();
         const { name, description, classification, image_url, purchase_date, purchase_cost, current_value, status } = data;
 
@@ -11,25 +14,18 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             return NextResponse.json({ error: 'Asset name is required' }, { status: 400 });
         }
 
-        const stmt = db.prepare(`
-            UPDATE company_assets
-            SET name = ?, description = ?, classification = ?, image_url = ?, purchase_date = ?, purchase_cost = ?, current_value = ?, status = ?
-            WHERE id = ?
-        `);
-
-        const info = stmt.run(
+        const result = await db.update(companyAssets).set({
             name,
-            description || '',
-            classification || '',
-            image_url || null,
-            purchase_date || null,
-            purchase_cost || 0,
-            current_value || 0,
-            status || 'Active',
-            id
-        );
+            description: description || '',
+            classification: classification || '',
+            imageUrl: image_url || null,
+            purchaseDate: purchase_date ? new Date(purchase_date) : null,
+            purchaseCost: purchase_cost || 0,
+            currentValue: current_value || 0,
+            status: status || 'Active'
+        }).where(eq(companyAssets.id, id)).returning({ id: companyAssets.id });
 
-        if (info.changes === 0) {
+        if (result.length === 0) {
             return NextResponse.json({ error: 'Asset not found' }, { status: 404 });
         }
 
@@ -41,11 +37,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { id } = await params;
-        const stmt = db.prepare('DELETE FROM company_assets WHERE id = ?');
-        const info = stmt.run(id);
+        const { id: idStr } = await params;
+        const id = Number(idStr);
 
-        if (info.changes === 0) {
+        const result = await db.delete(companyAssets).where(eq(companyAssets.id, id)).returning({ id: companyAssets.id });
+
+        if (result.length === 0) {
             return NextResponse.json({ error: 'Asset not found' }, { status: 404 });
         }
 

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { auditLog } from '@/lib/schema';
+import { desc, like, eq, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,41 +22,42 @@ export async function GET(request: Request) {
         const module = searchParams.get('module') || '';
         const action = searchParams.get('action') || '';
 
-        let query = 'SELECT * FROM audit_log WHERE 1=1';
-        const params: any[] = [];
-
+        // Build WHERE conditions dynamically
+        const conditions: any[] = [];
         if (user) {
-            query += ' AND username LIKE ?';
-            params.push(`%${user}%`);
+            conditions.push(like(auditLog.username, `%${user}%`));
         }
         if (module) {
-            query += ' AND module = ?';
-            params.push(module);
+            conditions.push(eq(auditLog.module, module));
         }
         if (action) {
-            query += ' AND action = ?';
-            params.push(action);
+            conditions.push(eq(auditLog.action, action));
         }
 
-        query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-        params.push(limit, offset);
+        // Build the query with optional conditions
+        let whereClause = conditions.length > 0 ? sql.join(conditions, sql` AND `) : sql`1=1`;
 
-        const logs = db.prepare(query).all(...params);
+        const logsRes = await db.execute(sql`
+            SELECT * FROM audit_log 
+            WHERE ${whereClause}
+            ORDER BY created_at DESC 
+            LIMIT ${limit} OFFSET ${offset}
+        `);
 
-        let countQuery = 'SELECT COUNT(*) as count FROM audit_log WHERE 1=1';
-        const countParams: any[] = [];
-        if (user) { countQuery += ' AND username LIKE ?'; countParams.push(`%${user}%`); }
-        if (module) { countQuery += ' AND module = ?'; countParams.push(module); }
-        if (action) { countQuery += ' AND action = ?'; countParams.push(action); }
-        
-        const totalCount = (db.prepare(countQuery).get(...countParams) as any).count;
+        const countRes = await db.execute(sql`
+            SELECT COUNT(*) as count FROM audit_log 
+            WHERE ${whereClause}
+        `);
+
+        const totalCount = Number(countRes.rows[0]?.count) || 0;
 
         return NextResponse.json({
-            logs,
+            logs: logsRes.rows,
             totalCount,
             totalPages: Math.ceil(totalCount / limit)
         });
     } catch (error) {
+        console.error('Audit log error:', error);
         return NextResponse.json({ error: 'Failed to fetch audit logs' }, { status: 500 });
     }
 }

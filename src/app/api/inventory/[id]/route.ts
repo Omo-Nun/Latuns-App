@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { requirePermission } from '@/lib/auth';
+import { inventoryItems } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +11,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (error) return error;
 
     try {
-        const { id } = await params;
+        const { id: idStr } = await params;
+        const id = Number(idStr);
         const data = await request.json();
         const { name, unit, description, default_price, tags, min_stock, low_stock } = data;
 
@@ -17,8 +20,15 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             return NextResponse.json({ error: 'Name and unit are required' }, { status: 400 });
         }
 
-        const stmt = db.prepare('UPDATE inventory_items SET name = ?, unit = ?, description = ?, default_price = ?, tags = ?, min_stock = ?, low_stock = ? WHERE id = ?');
-        stmt.run(name, unit, description || '', default_price || 0, tags || null, min_stock === undefined ? 10 : min_stock, low_stock === undefined ? 20 : low_stock, id);
+        await db.update(inventoryItems).set({
+            name,
+            unit,
+            description: description || '',
+            defaultPrice: Number(default_price) || 0,
+            tags: tags || null,
+            minStock: min_stock === undefined ? 10 : Number(min_stock),
+            lowStock: low_stock === undefined ? 20 : Number(low_stock)
+        }).where(eq(inventoryItems.id, id));
 
         return NextResponse.json({ success: true });
     } catch (error) {
@@ -31,9 +41,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (error) return error;
 
     try {
-        const { id } = await params;
-        const stmt = db.prepare('DELETE FROM inventory_items WHERE id = ?');
-        stmt.run(id);
+        const { id: idStr } = await params;
+        const id = Number(idStr);
+        
+        await db.delete(inventoryItems).where(eq(inventoryItems.id, id));
 
         return NextResponse.json({ success: true });
     } catch (error) {

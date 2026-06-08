@@ -2,15 +2,31 @@ import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { sendEmail } from '@/lib/mail';
+import { mailAccounts } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
 
 export async function POST(request: Request) {
     try {
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const account = db.prepare('SELECT * FROM mail_accounts WHERE user_id = ?').get(session.user.id) as any;
+        const accountRes = await db.select().from(mailAccounts).where(eq(mailAccounts.userId, session.user.id)).limit(1);
+        const account = accountRes[0];
         
         if (!account) return NextResponse.json({ error: 'Mail setup required' }, { status: 400 });
+
+        const legacyAccount = {
+            id: account.id,
+            user_id: account.userId,
+            imap_host: account.imapHost,
+            imap_port: account.imapPort,
+            imap_secure: account.imapSecure,
+            smtp_host: account.smtpHost,
+            smtp_port: account.smtpPort,
+            smtp_secure: account.smtpSecure,
+            email: account.email,
+            password: account.password
+        };
 
         const formData = await request.formData();
         const to = formData.get('to') as string;
@@ -35,7 +51,7 @@ export async function POST(request: Request) {
             }
         }
 
-        const info = await sendEmail(account, to, subject, text, html, attachments);
+        const info = await sendEmail(legacyAccount as any, to, subject, text, html, attachments);
         return NextResponse.json({ success: true, messageId: info.messageId });
     } catch (error: any) {
         console.error('Send mail error:', error);

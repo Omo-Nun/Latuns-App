@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { agents, clients, quotations, quotationItems } from '@/lib/schema';
+import { eq, sql } from 'drizzle-orm';
 
 export async function GET(
     request: Request,
@@ -9,8 +11,12 @@ export async function GET(
         const { id } = await props.params;
 
         // Fetch the agent details
-        const agentStmt = db.prepare('SELECT id, name, phone FROM agents WHERE id = ?');
-        const agent = agentStmt.get(Number(id));
+        const agentRes = await db.select({
+            id: agents.id,
+            name: agents.name,
+            phone: agents.phone,
+        }).from(agents).where(eq(agents.id, Number(id))).limit(1);
+        const agent = agentRes[0];
 
         if (!agent) {
             return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
@@ -18,7 +24,7 @@ export async function GET(
 
         // Fetch distinct clients associated with this agent through their quotations
         // Grouping by client_id to avoid duplicate client entries if they have multiple quotes
-        const clientsStmt = db.prepare(`
+        const result = await db.execute(sql`
             SELECT 
                 c.id, 
                 c.name, 
@@ -35,14 +41,12 @@ export async function GET(
                 FROM quotation_items
                 GROUP BY quotation_id
             ) qi_totals ON q.id = qi_totals.quotation_id
-            WHERE q.agent_id = ?
+            WHERE q.agent_id = ${Number(id)}
             GROUP BY c.id
             ORDER BY total_value DESC, total_quotes DESC
         `);
 
-        const clients = clientsStmt.all(Number(id));
-
-        return NextResponse.json({ agent, clients });
+        return NextResponse.json({ agent, clients: result.rows });
     } catch (error) {
         console.error('Failed to fetch agent clients:', error);
         return NextResponse.json({ error: 'Failed to fetch agent clients' }, { status: 500 });

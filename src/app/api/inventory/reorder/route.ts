@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { inventoryItems } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,19 +14,14 @@ export async function PUT(request: Request) {
             return NextResponse.json({ error: 'Order must be an array of IDs' }, { status: 400 });
         }
 
-        const updateStmt = db.prepare('UPDATE inventory_items SET display_order = ? WHERE id = ?');
-
         // Execute updates in a transaction
-        db.exec('BEGIN TRANSACTION');
-        try {
+        await db.transaction(async (tx) => {
             for (let i = 0; i < order.length; i++) {
-                updateStmt.run(i, order[i]);
+                await tx.update(inventoryItems)
+                    .set({ displayOrder: i })
+                    .where(eq(inventoryItems.id, Number(order[i])));
             }
-            db.exec('COMMIT');
-        } catch (err) {
-            db.exec('ROLLBACK');
-            throw err;
-        }
+        });
 
         return NextResponse.json({ success: true });
     } catch (error) {

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { quotations, activityLogs, clients } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
 
 export async function PUT(
     request: Request,
@@ -7,6 +9,7 @@ export async function PUT(
 ) {
     try {
         const resolvedParams = await params;
+        const id = Number(resolvedParams.id);
         const body = await request.json();
         const { project_status } = body;
 
@@ -14,65 +17,92 @@ export async function PUT(
             return NextResponse.json({ error: 'project_status is required' }, { status: 400 });
         }
 
-        const stmt = db.prepare('UPDATE quotations SET project_status = ? WHERE id = ?');
-        stmt.run(project_status, resolvedParams.id);
+        await db.transaction(async (tx) => {
+            await tx.update(quotations).set({ projectStatus: project_status }).where(eq(quotations.id, id));
 
-        // Log Activity & touch client updated_at
-        const quote = db.prepare('SELECT client_id, quote_number, doc_type, linked_quotations FROM quotations WHERE id = ?').get(resolvedParams.id) as any;
-        if (quote && quote.client_id) {
-            db.prepare(`
-                INSERT INTO activity_logs (client_id, action_type, description, ref_id)
-                VALUES (?, ?, ?, ?)
-            `).run(quote.client_id, 'status_change', `Updated status to "${project_status}" for ${quote.quote_number || 'Quote'}`, resolvedParams.id);
-            db.prepare('UPDATE clients SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(quote.client_id);
-        }
+            // Log Activity & touch client updated_at
+            const quoteRes = await tx.select({ 
+                clientId: quotations.clientId, 
+                quoteNumber: quotations.quoteNumber, 
+                docType: quotations.docType, 
+                linkedQuotations: quotations.linkedQuotations 
+            }).from(quotations).where(eq(quotations.id, id)).limit(1);
+            
+            const quote = quoteRes[0];
+            
+            if (quote && quote.clientId) {
+                await tx.insert(activityLogs).values({
+                    clientId: quote.clientId,
+                    actionType: 'status_change',
+                    description: `Updated status to "${project_status}" for ${quote.quoteNumber || 'Quote'}`,
+                    refId: id
+                });
+                await tx.update(clients).set({ updatedAt: new Date() }).where(eq(clients.id, quote.clientId));
+            }
 
-        // Cascade status to child quotations if this is a parent composite document
-        // Goes 2 levels deep: discount_statement → project_scope → children
-        if (quote && (quote.doc_type === 'project_scope' || quote.doc_type === 'discount_statement') && quote.linked_quotations) {
-            try {
-                const level1Ids: number[] = JSON.parse(quote.linked_quotations);
-                const updateChildStmt = db.prepare('UPDATE quotations SET project_status = ? WHERE id = ?');
+            // Cascade status to child quotations if this is a parent composite document
+            // Goes 2 levels deep: discount_statement → project_scope → children
+            if (quote && (quote.docType === 'project_scope' || quote.docType === 'discount_statement') && quote.linkedQuotations) {
+                try {
+                    const level1Ids: number[] = JSON.parse(quote.linkedQuotations);
 
-                for (const childId of level1Ids) {
-                    updateChildStmt.run(project_status, childId);
+                    for (const childId of level1Ids) {
+                        await tx.update(quotations).set({ projectStatus: project_status }).where(eq(quotations.id, childId));
 
-                    const childQuote = db.prepare('SELECT client_id, quote_number, doc_type, linked_quotations FROM quotations WHERE id = ?').get(childId) as any;
-                    if (childQuote) {
-                        // Log activity for this child
-                        if (childQuote.client_id) {
-                            db.prepare(`
-                                INSERT INTO activity_logs (client_id, action_type, description, ref_id)
-                                VALUES (?, ?, ?, ?)
-                            `).run(childQuote.client_id, 'status_change', `Status cascaded to "${project_status}" from parent document ${quote.quote_number || `#${resolvedParams.id}`}`, childId);
-                            db.prepare('UPDATE clients SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(childQuote.client_id);
-                        }
+                        const childQuoteRes = await tx.select({ 
+                            clientId: quotations.clientId, 
+                            quoteNumber: quotations.quoteNumber, 
+                            docType: quotations.docType, 
+                            linkedQuotations: quotations.linkedQuotations 
+                        }).from(quotations).where(eq(quotations.id, childId)).limit(1);
+                        
+                        const childQuote = childQuoteRes[0];
+                        if (childQuote) {
+                            // Log activity for this child
+                            if (childQuote.clientId) {
+                                await tx.insert(activityLogs).values({
+                                    clientId: childQuote.clientId,
+                                    actionType: 'status_change',
+                                    description: `Status cascaded to "${project_status}" from parent document ${quote.quoteNumber || `#${id}`}`,
+                                    refId: childId
+                                });
+                                await tx.update(clients).set({ updatedAt: new Date() }).where(eq(clients.id, childQuote.clientId));
+                            }
 
-                        // Level 2: if this child is itself a project_scope, cascade to its children too
-                        if ((childQuote.doc_type === 'project_scope' || childQuote.doc_type === 'discount_statement') && childQuote.linked_quotations) {
-                            try {
-                                const level2Ids: number[] = JSON.parse(childQuote.linked_quotations);
-                                for (const grandChildId of level2Ids) {
-                                    updateChildStmt.run(project_status, grandChildId);
-                                    const gcQuote = db.prepare('SELECT client_id, quote_number FROM quotations WHERE id = ?').get(grandChildId) as any;
-                                    if (gcQuote && gcQuote.client_id) {
-                                        db.prepare(`
-                                            INSERT INTO activity_logs (client_id, action_type, description, ref_id)
-                                            VALUES (?, ?, ?, ?)
-                                        `).run(gcQuote.client_id, 'status_change', `Status cascaded to "${project_status}" from ${quote.quote_number || 'parent document'}`, grandChildId);
-                                        db.prepare('UPDATE clients SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(gcQuote.client_id);
+                            // Level 2: if this child is itself a project_scope, cascade to its children too
+                            if ((childQuote.docType === 'project_scope' || childQuote.docType === 'discount_statement') && childQuote.linkedQuotations) {
+                                try {
+                                    const level2Ids: number[] = JSON.parse(childQuote.linkedQuotations);
+                                    for (const grandChildId of level2Ids) {
+                                        await tx.update(quotations).set({ projectStatus: project_status }).where(eq(quotations.id, grandChildId));
+                                        
+                                        const gcQuoteRes = await tx.select({ 
+                                            clientId: quotations.clientId, 
+                                            quoteNumber: quotations.quoteNumber 
+                                        }).from(quotations).where(eq(quotations.id, grandChildId)).limit(1);
+                                        
+                                        const gcQuote = gcQuoteRes[0];
+                                        if (gcQuote && gcQuote.clientId) {
+                                            await tx.insert(activityLogs).values({
+                                                clientId: gcQuote.clientId,
+                                                actionType: 'status_change',
+                                                description: `Status cascaded to "${project_status}" from ${quote.quoteNumber || 'parent document'}`,
+                                                refId: grandChildId
+                                            });
+                                            await tx.update(clients).set({ updatedAt: new Date() }).where(eq(clients.id, gcQuote.clientId));
+                                        }
                                     }
+                                } catch (e) {
+                                    console.error('Failed to cascade to grandchildren:', e);
                                 }
-                            } catch (e) {
-                                console.error('Failed to cascade to grandchildren:', e);
                             }
                         }
                     }
+                } catch (e) {
+                    console.error('Failed to cascade status to children:', e);
                 }
-            } catch (e) {
-                console.error('Failed to cascade status to children:', e);
             }
-        }
+        });
 
         return NextResponse.json({ success: true, project_status });
     } catch (error) {

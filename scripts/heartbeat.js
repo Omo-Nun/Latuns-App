@@ -41,15 +41,7 @@ function triggerLocalBackup() {
 function sendHeartbeat() {
     console.log(`[DAEMON] Recording heartbeat locally...`);
     
-    // We update local status without freezing if cloud fails
-    try {
-        const sqlite3 = require('node:sqlite');
-        const dbPath = process.env.DB_PATH || './latuns.db';
-        const db = new sqlite3.DatabaseSync(dbPath);
-        db.exec(`INSERT INTO settings (key, value) VALUES ('lastHeartbeat', '${new Date().toISOString()}') ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
-    } catch(err) {
-        console.error("[DAEMON] Failed to update local DB heartbeat:", err.message);
-    }
+    // Removed obsolete SQLite fallback; the cloud heartbeat is sufficient.
 
     if (!GCF_ENDPOINT) {
         console.log(`[DAEMON] No GCF_ENDPOINT provided. Skipping cloud ping.`);

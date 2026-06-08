@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { companyAssets } from '@/lib/schema';
+import { desc } from 'drizzle-orm';
+import { requirePermission } from '@/lib/auth';
+import { toSnakeCase } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+    const error = await requirePermission('Inventory', 'can_view');
+    if (error) return error;
+
     try {
-        const assets = db.prepare('SELECT * FROM company_assets ORDER BY created_at DESC').all();
-        return NextResponse.json(assets);
+        const assets = await db.select().from(companyAssets).orderBy(desc(companyAssets.createdAt));
+        return NextResponse.json(toSnakeCase(assets));
     } catch (error) {
         console.error('Failed to fetch assets error:', error);
         return NextResponse.json({ error: 'Failed to fetch assets' }, { status: 500 });
@@ -22,22 +29,18 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Asset name is required' }, { status: 400 });
         }
 
-        const stmt = db.prepare(`
-            INSERT INTO company_assets (name, description, classification, image_url, purchase_date, purchase_cost, current_value, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        const info = stmt.run(
+        const insertResult = await db.insert(companyAssets).values({
             name,
-            description || '',
-            classification || '',
-            image_url || null,
-            purchase_date || null,
-            purchase_cost || 0,
-            current_value || 0,
-            status || 'Active'
-        );
+            description: description || '',
+            classification: classification || '',
+            imageUrl: image_url || null,
+            purchaseDate: purchase_date ? new Date(purchase_date) : null,
+            purchaseCost: Number(purchase_cost) || 0,
+            currentValue: Number(current_value) || 0,
+            status: status || 'Active'
+        }).returning({ id: companyAssets.id });
 
-        return NextResponse.json({ id: Number(info.lastInsertRowid), success: true }, { status: 201 });
+        return NextResponse.json({ id: insertResult[0].id, success: true }, { status: 201 });
     } catch (error) {
         console.error('Failed to create asset error:', error);
         return NextResponse.json({ error: 'Failed to create asset' }, { status: 500 });

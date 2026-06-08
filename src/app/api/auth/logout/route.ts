@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import db from '@/lib/db';
+import { sessions } from '@/lib/schema';
 import { getSession } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import { eq } from 'drizzle-orm';
 
 export async function POST() {
     try {
@@ -12,9 +14,9 @@ export async function POST() {
 
         if (sessionId) {
             if (session) {
-                logAudit(session.user.id, session.user.username, 'Logout', 'Auth', 'User logged out');
+                await logAudit(session.user.id, session.user.username, 'Logout', 'Auth', 'User logged out');
             }
-            db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+            await db.delete(sessions).where(eq(sessions.id, sessionId));
         }
 
         cookieStore.delete('session_id');

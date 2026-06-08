@@ -10,7 +10,7 @@ export async function GET() {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const permissions = await getPermissions(session.user.role_id);
+    const permissions = session.user.role_id ? await getPermissions(session.user.role_id) : [];
 
     return NextResponse.json({
         user: session.user,

@@ -1,6 +1,7 @@
 import db from './db';
+import { auditLog } from './schema';
 
-export function logAudit(
+export async function logAudit(
     userId: number | null,
     username: string | null,
     action: string,
@@ -10,10 +11,15 @@ export function logAudit(
     refId?: number
 ) {
     try {
-        db.prepare(`
-            INSERT INTO audit_log (user_id, username, action, module, description, ref_type, ref_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(userId, username, action, module, description, refType || null, refId || null);
+        await db.insert(auditLog).values({
+            userId,
+            username,
+            action,
+            module,
+            description,
+            refType: refType || null,
+            refId: refId || null,
+        });
     } catch (error) {
         console.error("Audit Logging Error:", error);
     }

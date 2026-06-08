@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { staffRoles } from '@/lib/schema';
+import { asc } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
-        const roles = db.prepare('SELECT * FROM staff_roles ORDER BY name ASC').all();
+        const roles = await db.select().from(staffRoles).orderBy(asc(staffRoles.name));
         return NextResponse.json(roles);
     } catch (error) {
         return NextResponse.json({ error: 'Failed to fetch roles' }, { status: 500 });
@@ -20,12 +22,11 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Role name is required' }, { status: 400 });
         }
 
-        const stmt = db.prepare('INSERT INTO staff_roles (name) VALUES (?)');
-        const info = stmt.run(name);
+        const insertResult = await db.insert(staffRoles).values({ name }).returning({ id: staffRoles.id });
 
-        return NextResponse.json({ id: info.lastInsertRowid, name }, { status: 201 });
+        return NextResponse.json({ id: insertResult[0].id, name }, { status: 201 });
     } catch (error: any) {
-        if (error.message?.includes('UNIQUE constraint failed')) {
+        if (error.message?.includes('unique constraint') || error.message?.includes('duplicate key')) {
             return NextResponse.json({ error: 'Role already exists' }, { status: 400 });
         }
         return NextResponse.json({ error: 'Failed to add role' }, { status: 500 });

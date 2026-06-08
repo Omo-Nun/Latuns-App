@@ -1,15 +1,22 @@
 import { NextResponse } from 'next/server';
 import { requirePermission } from '@/lib/auth';
 import db from '@/lib/db';
+import { settings } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
 
 export async function GET(req: Request) {
     try {
         const authError = await requirePermission('Settings', 'can_view');
         if (authError) return authError;
 
+        const allSettingsRes = await db.select().from(settings);
+        const settingsMap: Record<string, string> = {};
+        allSettingsRes.forEach(s => {
+            if (s.key && s.value) settingsMap[s.key] = s.value;
+        });
+
         const getSetting = (key: string, defaultValue: string = '') => {
-            const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as any;
-            return row ? row.value : defaultValue;
+            return settingsMap[key] || defaultValue;
         };
 
         const nodeName = process.env.NODE_NAME || getSetting('nodeName', 'Node Alpha');
@@ -30,7 +37,7 @@ export async function GET(req: Request) {
                 
                 const peerRes = await fetch(`http://${peerAddress}:3000/api/cluster/status`, { 
                     method: 'GET',
-                    headers: { 'Cookie': req?.headers?.get('cookie') || '' }, // Pass cookies just in case, though might not authenticate across domains if secret differs
+                    headers: { 'Cookie': req?.headers?.get('cookie') || '' }, // Pass cookies just in case
                     signal: controller.signal 
                 });
                 clearTimeout(timeoutId);

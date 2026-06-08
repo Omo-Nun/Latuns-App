@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import db from '@/lib/db';
+import { users, sessions } from '@/lib/schema';
 import { logAudit } from '@/lib/audit';
+import { eq, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { hashPassword, verifyPassword } from '@/lib/auth';
 
@@ -40,9 +42,12 @@ export async function POST(request: Request) {
         const trimmedUsername = username.trim();
         const trimmedPassword = password.trim();
 
-        const user = db.prepare('SELECT * FROM users WHERE LOWER(username) = LOWER(?)').get(trimmedUsername) as any;
+        const result = await db.select().from(users)
+            .where(sql`LOWER(${users.username}) = LOWER(${trimmedUsername})`)
+            .limit(1);
+        const user = result[0];
 
-        if (!user || !verifyPassword(trimmedPassword, user.password_hash)) {
+        if (!user || !verifyPassword(trimmedPassword, user.passwordHash)) {
             return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
         }
         
@@ -50,19 +55,25 @@ export async function POST(request: Request) {
         rateLimit.delete(ip);
 
         // Upgrade hash if it's legacy
-        if (!user.password_hash.startsWith('scrypt:')) {
+        if (!user.passwordHash.startsWith('scrypt:')) {
             const newHash = hashPassword(password);
-            db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.id);
+            await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, user.id));
         }
 
         // Create session
         const sessionId = crypto.randomBytes(32).toString('hex');
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
         const userAgent = request.headers.get('user-agent') || 'Unknown';
-        const now = new Date().toISOString();
+        const now = new Date();
 
-        db.prepare('INSERT INTO sessions (id, user_id, expires_at, ip_address, user_agent, last_active) VALUES (?, ?, ?, ?, ?, ?)')
-            .run(sessionId, user.id, expiresAt, ip, userAgent, now);
+        await db.insert(sessions).values({
+            id: sessionId,
+            userId: user.id,
+            expiresAt,
+            ipAddress: ip,
+            userAgent,
+            lastActive: now,
+        });
 
         // Set cookie
         const cookieStore = await cookies();
@@ -75,9 +86,9 @@ export async function POST(request: Request) {
         });
 
         // Audit log
-        logAudit(user.id, user.username, 'Login', 'Auth', 'User logged in successfully');
+        await logAudit(user.id, user.username, 'Login', 'Auth', 'User logged in successfully');
 
-        return NextResponse.json({ success: true, user: { id: user.id, username: user.username, role_id: user.role_id } });
+        return NextResponse.json({ success: true, user: { id: user.id, username: user.username, role_id: user.roleId } });
     } catch (error) {
         console.error('Login error:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

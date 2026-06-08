@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { requirePermission, getSession } from '@/lib/auth';
+import { agents } from '@/lib/schema';
+import { eq, asc } from 'drizzle-orm';
+import { toSnakeCase } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,18 +15,14 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const role = searchParams.get('role');
         
-        let query = 'SELECT * FROM agents';
-        let params: any[] = [];
+        let query = db.select().from(agents).orderBy(asc(agents.name));
         
         if (role) {
-            query += ' WHERE role = ?';
-            params.push(role);
+            query = db.select().from(agents).where(eq(agents.role, role)).orderBy(asc(agents.name)) as any;
         }
         
-        query += ' ORDER BY name ASC';
-        
-        const agents = db.prepare(query).all(...params);
-        return NextResponse.json(agents);
+        const result = await query;
+        return NextResponse.json(toSnakeCase(result));
     } catch (error) {
         return NextResponse.json({ error: 'Failed to fetch staff' }, { status: 500 });
     }
@@ -48,10 +47,14 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Non-admins cannot create Admin staff' }, { status: 403 });
         }
 
-        const stmt = db.prepare('INSERT INTO agents (name, phone, role, image_url) VALUES (?, ?, ?, ?)');
-        const info = stmt.run(name, phone || '', role || 'Roof Estimator', image_url || null);
+        const insertResult = await db.insert(agents).values({
+            name,
+            phone: phone || '',
+            role: role || 'Roof Estimator',
+            imageUrl: image_url || null,
+        }).returning({ id: agents.id });
 
-        return NextResponse.json({ id: info.lastInsertRowid }, { status: 201 });
+        return NextResponse.json({ id: insertResult[0].id }, { status: 201 });
     } catch (error) {
         return NextResponse.json({ error: 'Failed to add staff' }, { status: 500 });
     }

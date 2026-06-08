@@ -3,6 +3,9 @@ import db from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/auth';
+import { settings, expenses } from '@/lib/schema';
+import { eq, sql } from 'drizzle-orm';
+import { toSnakeCase } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,14 +20,16 @@ export async function GET() {
             subsidiaries: JSON.stringify(['LATUNS ROOFING SYSTEM', 'LATUNS ESTATE DEVELOPERS'])
         };
 
-        const rows = db.prepare('SELECT key, value FROM settings').all() as { key: string, value: string }[];
-        const settings: Record<string, string> = { ...defaultSettings };
+        const rows = await db.select().from(settings);
+        const settingsMap: Record<string, string> = { ...defaultSettings };
 
         rows.forEach(row => {
-            settings[row.key] = row.value;
+            if (row.key) {
+                settingsMap[row.key] = row.value || '';
+            }
         });
 
-        return NextResponse.json(settings);
+        return NextResponse.json(settingsMap);
     } catch (error) {
         return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });
     }
@@ -38,33 +43,31 @@ export async function PUT(request: Request) {
         const data = await request.json();
         const session = await getSession();
 
-        const stmt = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
-
-        db.exec('BEGIN TRANSACTION');
-        try {
+        await db.transaction(async (tx) => {
             // Handle Expense Category Renaming Sync
             if (data.expenseCategories && data.oldCategoryName && data.newCategoryName) {
-                db.prepare('UPDATE expenses SET category = ? WHERE category = ?')
-                  .run(data.newCategoryName, data.oldCategoryName);
+                await tx.update(expenses).set({ category: data.newCategoryName }).where(eq(expenses.category, data.oldCategoryName));
             }
 
             for (const [key, value] of Object.entries(data)) {
                 if (typeof value === 'string' && !['oldCategoryName', 'newCategoryName'].includes(key)) {
-                    stmt.run(key, value);
+                    await tx.execute(sql.raw(`
+                        INSERT INTO settings (key, value) 
+                        VALUES ('${key}', '${value}') 
+                        ON CONFLICT (key) DO UPDATE SET value = excluded.value
+                    `));
                 }
             }
-            db.exec('COMMIT');
+
             if (session) {
                 const updatedKeys = Object.keys(data).filter(k => k !== 'oldCategoryName' && k !== 'newCategoryName').join(', ');
                 if (updatedKeys) {
-                    logAudit(session.user.id, session.user.username, 'Update', 'Settings', `Updated general settings: ${updatedKeys}`);
+                    await logAudit(session.user.id, session.user.username, 'Update', 'Settings', `Updated general settings: ${updatedKeys}`);
                 }
             }
-            return NextResponse.json({ success: true });
-        } catch (e) {
-            db.exec('ROLLBACK');
-            throw e;
-        }
+        });
+
+        return NextResponse.json({ success: true });
     } catch (error: any) {
         return NextResponse.json({ error: error.message || 'Failed to update settings' }, { status: 500 });
     }

@@ -1,18 +1,22 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { clients, quotations } from '@/lib/schema';
+import { eq, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { id } = await params;
+        const { id: idStr } = await params;
+        const id = Number(idStr);
 
-        const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(id) as any;
+        const clientRes = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
+        const client = clientRes[0];
         if (!client) {
             return NextResponse.json({ error: 'Client not found' }, { status: 404 });
         }
 
-        const quotations = db.prepare(`
+        const quotationsRes = await db.execute(sql.raw(`
             SELECT 
                 q.*,
                 COALESCE(SUM(qi.total), 0) as subtotal,
@@ -21,44 +25,50 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 (SELECT id FROM stock_requests WHERE quotation_id = q.id ORDER BY created_at DESC LIMIT 1) as stock_request_id
             FROM quotations q
             LEFT JOIN quotation_items qi ON q.id = qi.quotation_id
-            WHERE q.client_id = ?
+            WHERE q.client_id = ${id}
             GROUP BY q.id
             ORDER BY q.created_at DESC
-        `).all(id);
+        `));
+        const quotationsList = quotationsRes.rows;
 
-        const itemsStmt = db.prepare('SELECT * FROM quotation_items WHERE quotation_id = ?');
-        const quotationsWithItems = quotations.map((q: any) => ({
+        const itemsRes = await db.execute(sql.raw(`SELECT * FROM quotation_items WHERE quotation_id IN (SELECT id FROM quotations WHERE client_id = ${id})`));
+        const allItems = itemsRes.rows;
+
+        const quotationsWithItems = quotationsList.map((q: any) => ({
             ...q,
-            items: itemsStmt.all(q.id)
+            items: allItems.filter((i: any) => i.quotation_id === q.id)
         }));
 
-        const estimators = db.prepare(`
+        const estimatorsRes = await db.execute(sql.raw(`
             SELECT DISTINCT a.id, a.name, a.phone
             FROM quotations q
             JOIN agents a ON q.agent_id = a.id
-            WHERE q.client_id = ?
-        `).all(id);
+            WHERE q.client_id = ${id}
+        `));
+        const estimators = estimatorsRes.rows;
 
-        const activity_logs = db.prepare(`
+        const activityLogsRes = await db.execute(sql.raw(`
             SELECT * FROM activity_logs
-            WHERE client_id = ?
+            WHERE client_id = ${id}
             ORDER BY created_at DESC
-        `).all(id);
+        `));
+        const activity_logs = activityLogsRes.rows;
 
-        const payments = db.prepare(`
+        const paymentsRes = await db.execute(sql.raw(`
             SELECT p.*, q.quote_number
             FROM payments p
             JOIN quotations q ON p.quotation_id = q.id
-            WHERE q.client_id = ?
+            WHERE q.client_id = ${id}
             ORDER BY p.date DESC
-        `).all(id);
+        `));
+        const paymentsList = paymentsRes.rows;
 
         return NextResponse.json({
             ...client,
             quotations: quotationsWithItems,
             estimators,
             activity_logs,
-            payments
+            payments: paymentsList
         });
     } catch (error) {
         console.error(error);
@@ -68,22 +78,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { id } = await params;
+        const { id: idStr } = await params;
+        const id = Number(idStr);
         const body = await request.json();
 
-        const updates = [];
-        const values = [];
+        const updates: any = {};
 
-        if (body.name !== undefined) { updates.push('name = ?'); values.push(body.name); }
-        if (body.phone !== undefined) { updates.push('phone = ?'); values.push(body.phone); }
-        if (body.address !== undefined) { updates.push('address = ?'); values.push(body.address); }
-        if (body.state !== undefined) { updates.push('state = ?'); values.push(body.state); }
-        if (body.city !== undefined) { updates.push('city = ?'); values.push(body.city); }
+        if (body.name !== undefined) updates.name = body.name;
+        if (body.phone !== undefined) updates.phone = body.phone;
+        if (body.address !== undefined) updates.address = body.address;
+        if (body.state !== undefined) updates.state = body.state;
+        if (body.city !== undefined) updates.city = body.city;
 
-        if (updates.length > 0) {
-            updates.push('updated_at = CURRENT_TIMESTAMP');
-            const stmt = db.prepare(`UPDATE clients SET ${updates.join(', ')} WHERE id = ?`);
-            stmt.run(...values, id);
+        if (Object.keys(updates).length > 0) {
+            updates.updatedAt = new Date();
+            await db.update(clients).set(updates).where(eq(clients.id, id));
         }
 
         return NextResponse.json({ success: true });
@@ -95,18 +104,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const { id } = await params;
+        const { id: idStr } = await params;
+        const id = Number(idStr);
 
-        db.exec('BEGIN TRANSACTION');
-        try {
+        await db.transaction(async (tx) => {
             // Nullify client references before deleting
-            db.prepare('UPDATE quotations SET client_id = NULL WHERE client_id = ?').run(id);
-            db.prepare('DELETE FROM clients WHERE id = ?').run(id);
-            db.exec('COMMIT');
-        } catch (e) {
-            db.exec('ROLLBACK');
-            throw e;
-        }
+            await tx.update(quotations).set({ clientId: null }).where(eq(quotations.clientId, id));
+            await tx.delete(clients).where(eq(clients.id, id));
+        });
 
         return NextResponse.json({ success: true });
     } catch (error) {

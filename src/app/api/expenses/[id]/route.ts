@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { requirePermission } from '@/lib/auth';
+import { expenses } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,9 +11,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (error) return error;
 
     try {
-        const { id } = await params;
-        const stmt = db.prepare('DELETE FROM expenses WHERE id = ?');
-        stmt.run(id);
+        const { id: idStr } = await params;
+        const id = Number(idStr);
+        
+        await db.delete(expenses).where(eq(expenses.id, id));
 
         return NextResponse.json({ success: true });
     } catch (error) {

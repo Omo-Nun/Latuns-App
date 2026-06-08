@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { subDays, subMonths, subYears, isAfter } from 'date-fns';
-import { calcSundries, calcGrandTotal, calcNetTotal } from '@/lib/financeUtils';
+import { calcNetTotal } from '@/lib/financeUtils';
+import { sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +18,11 @@ export async function GET(request: Request) {
         else if (filter === 'month') startDate = subMonths(now, 30); // Approximate month
         else if (filter === 'year') startDate = subYears(now, 1);
 
-
-
         // 1. Identify all child quotations
         let childIdsSet = new Set<number>();
         try {
-            const allLinked = db.prepare("SELECT linked_quotations FROM quotations WHERE linked_quotations IS NOT NULL AND linked_quotations != ''").all() as any[];
-            allLinked.forEach(row => {
+            const allLinkedRes = await db.execute(sql.raw(`SELECT linked_quotations FROM quotations WHERE linked_quotations IS NOT NULL AND linked_quotations != ''`));
+            allLinkedRes.rows.forEach((row: any) => {
                 const raw = (row.linked_quotations || "").trim();
                 if (!raw) return;
                 try {
@@ -39,11 +38,12 @@ export async function GET(request: Request) {
         let allQuotations: any[] = [];
         let financialQuotations: any[] = [];
         try {
-            allQuotations = db.prepare(`
+            const allQuotationsRes = await db.execute(sql.raw(`
                 SELECT q.*, 
                 (SELECT COALESCE(SUM(total), 0) FROM quotation_items WHERE quotation_id = q.id) as subtotal
                 FROM quotations q
-            `).all();
+            `));
+            allQuotations = allQuotationsRes.rows;
             financialQuotations = allQuotations.filter(q => q.project_status && q.project_status !== 'Pending');
         } catch (e) {
             console.error("Dashboard API Error (Step 2):", e);
@@ -53,14 +53,15 @@ export async function GET(request: Request) {
         // 3. Fetch all payments
         let allPayments: any[] = [];
         try {
-            allPayments = db.prepare('SELECT quotation_id, amount FROM payments').all();
+            const allPaymentsRes = await db.execute(sql.raw('SELECT quotation_id, amount FROM payments'));
+            allPayments = allPaymentsRes.rows;
         } catch (e) {
             console.error("Dashboard API Error (Step 3):", e);
             throw new Error("Failed to fetch payments");
         }
 
         // 4a. Process ALL roots for counts
-        const allRoots = allQuotations.filter(q => !childIdsSet.has(q.id));
+        const allRoots = allQuotations.filter(q => !childIdsSet.has(Number(q.id)));
         
         let totalQuotes = 0;
         let totalVisited = 0, totalNotVisited = 0, totalSent = 0;
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
         const todayStr = now.toISOString().split('T')[0];
         const yesterdayStr = subDays(now, 1).toISOString().split('T')[0];
 
-        allRoots.forEach(q => {
+        allRoots.forEach((q: any) => {
             if (!q.created_at) return;
             try {
                 const qDate = new Date(q.created_at);
@@ -77,7 +78,7 @@ export async function GET(request: Request) {
 
                 if (startDate && !isAfter(qDate, startDate)) return;
 
-                const qDateStr = q.created_at.includes('T') ? q.created_at.split('T')[0] : (q.created_at.split(' ')[0] || "");
+                const qDateStr = typeof q.created_at === 'string' && q.created_at.includes('T') ? q.created_at.split('T')[0] : (typeof q.created_at === 'string' ? q.created_at.split(' ')[0] : qDate.toISOString().split('T')[0]);
                 
                 if (qDateStr === todayStr) {
                     todayQuotes++;
@@ -97,12 +98,12 @@ export async function GET(request: Request) {
         });
 
         // 4b. Process non-Pending roots for financials and charting
-        const financialRoots = financialQuotations.filter(q => !childIdsSet.has(q.id));
+        const financialRoots = financialQuotations.filter(q => !childIdsSet.has(Number(q.id)));
         
         let chartDataMap: Record<string, { date: string, revenue: number, paid: number }> = {};
         let totalOutstanding = 0, totalPaid = 0;
 
-        financialRoots.forEach(q => {
+        financialRoots.forEach((q: any) => {
             if (!q.created_at) return;
             try {
                 const qDate = new Date(q.created_at);
@@ -115,7 +116,7 @@ export async function GET(request: Request) {
                 
                 let childIds: number[] = [];
                 if (q.linked_quotations) {
-                    const raw = q.linked_quotations.trim();
+                    const raw = String(q.linked_quotations).trim();
                     if (raw) {
                         try {
                             const parsed = JSON.parse(raw);
@@ -127,7 +128,7 @@ export async function GET(request: Request) {
                 const docIds = [q.id, ...childIds];
                 const totalDocPaid = allPayments
                     .filter(p => docIds.includes(Number(p.quotation_id)))
-                    .reduce((sum, p) => Math.round((sum + (p.amount || 0) + Number.EPSILON) * 100) / 100, 0);
+                    .reduce((sum, p) => Math.round((sum + (Number(p.amount) || 0) + Number.EPSILON) * 100) / 100, 0);
 
                 totalPaid += totalDocPaid;
                 totalOutstanding += (netTotal - totalDocPaid);
@@ -149,24 +150,26 @@ export async function GET(request: Request) {
         const chartData = Object.values(chartDataMap);
         let invCount = 0;
         try {
-            const res = db.prepare('SELECT COUNT(*) as count FROM inventory_items').get() as any;
-            invCount = res?.count || 0;
+            const res = await db.execute(sql.raw('SELECT COUNT(*) as count FROM inventory_items'));
+            invCount = Number(res.rows[0]?.count) || 0;
         } catch { }
 
         let lowStockItems: any[] = [];
         try {
-            lowStockItems = db.prepare('SELECT id, name, unit, stock_qty, min_stock, low_stock FROM inventory_items WHERE stock_qty <= COALESCE(low_stock, 20) AND stock_qty >= 0 ORDER BY stock_qty ASC').all();
+            const lowStockRes = await db.execute(sql.raw('SELECT id, name, unit, stock_qty, min_stock, low_stock FROM inventory_items WHERE stock_qty <= COALESCE(low_stock, 20) AND stock_qty >= 0 ORDER BY stock_qty ASC'));
+            lowStockItems = lowStockRes.rows;
         } catch { }
 
         let rejectedRequests: any[] = [];
         try {
-            rejectedRequests = db.prepare(`
+            const rejectedRes = await db.execute(sql.raw(`
                 SELECT q.id as quotation_id, q.quote_number, q.client_name, q.project_type
                 FROM quotations q
                 JOIN stock_requests sr ON q.id = sr.quotation_id
                 WHERE sr.status = 'rejected'
                 GROUP BY q.id
-            `).all();
+            `));
+            rejectedRequests = rejectedRes.rows;
         } catch { }
 
         return NextResponse.json({
