@@ -10,7 +10,10 @@ services:
     environment:
       - NODE_ENV=production
       - DB_PATH=/app/data/latuns.db
-      # - ENCRYPTION_KEY=${ENCRYPTION_KEY} # Passed from host environment
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - NODE_NAME=${NODE_NAME}
+      - NODE_ROLE=${NODE_ROLE}
+      - PEER_NODE_ADDRESS=${PEER_NODE_ADDRESS:-}
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups
