@@ -35,8 +35,8 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
         }
 
-        if (password.length < 8) {
-            return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 });
+        if (password.length < 4) {
+            return NextResponse.json({ error: 'Password must be at least 4 characters long' }, { status: 400 });
         }
 
         const trimmedUsername = username.trim();
@@ -89,8 +89,14 @@ export async function POST(request: Request) {
         await logAudit(user.id, user.username, 'Login', 'Auth', 'User logged in successfully');
 
         return NextResponse.json({ success: true, user: { id: user.id, username: user.username, role_id: user.roleId } });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Login error:', error);
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+        
+        // Provide a clearer error message for database connection issues
+        if (error.cause?.code === 'ECONNREFUSED' || error.message?.includes('ECONNREFUSED')) {
+            return NextResponse.json({ error: 'Database connection failed. Ensure the database is running.' }, { status: 500 });
+        }
+        
+        return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
     }
 }
