@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import * as dotenv from 'dotenv';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
 import * as schema from '../src/lib/schema';
 
@@ -102,6 +103,16 @@ async function migrateData() {
         } else {
           console.error(`❌ Error migrating ${table.name}:`, e);
         }
+      }
+    }
+
+    console.log('Syncing PostgreSQL sequences...');
+    for (const table of tables) {
+      try {
+        await pgDb.execute(sql.raw(`SELECT setval(pg_get_serial_sequence('${table.name}', 'id'), COALESCE(MAX(id), 1)) FROM ${table.name}`));
+        console.log(`Synced sequence for ${table.name}`);
+      } catch (e: any) {
+        // Some tables might not have 'id' sequence, skip silently or log
       }
     }
 

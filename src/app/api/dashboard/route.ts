@@ -66,9 +66,11 @@ export async function GET(request: Request) {
         let totalQuotes = 0;
         let totalVisited = 0, totalNotVisited = 0, totalSent = 0;
         let todayQuotes = 0, yesterdayQuotes = 0, todayVisited = 0, yesterdayVisited = 0;
+        let dayBeforeYesterdayQuotes = 0, dayBeforeYesterdayVisited = 0;
 
         const todayStr = now.toISOString().split('T')[0];
         const yesterdayStr = subDays(now, 1).toISOString().split('T')[0];
+        const dayBeforeYesterdayStr = subDays(now, 2).toISOString().split('T')[0];
 
         allRoots.forEach((q: any) => {
             if (!q.created_at) return;
@@ -86,6 +88,9 @@ export async function GET(request: Request) {
                 } else if (qDateStr === yesterdayStr) {
                     yesterdayQuotes++;
                     if (q.visit_status === 'Visited') yesterdayVisited++;
+                } else if (qDateStr === dayBeforeYesterdayStr) {
+                    dayBeforeYesterdayQuotes++;
+                    if (q.visit_status === 'Visited') dayBeforeYesterdayVisited++;
                 }
 
                 totalQuotes++;
@@ -179,8 +184,10 @@ export async function GET(request: Request) {
             invCount: invCount,
             todayQuotes,
             yesterdayQuotes,
+            dayBeforeYesterdayQuotes,
             todayVisited,
             yesterdayVisited,
+            dayBeforeYesterdayVisited,
             totalVisited,
             totalNotVisited,
             totalSent,

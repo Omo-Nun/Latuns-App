@@ -41,11 +41,12 @@ export async function POST() {
         await fs.unlink(backupFilePath);
         
         // 5. Update settings to record the last backup time
-        await db.execute(sql.raw(`
+        const backupTime = new Date().toISOString();
+        await db.execute(sql`
             INSERT INTO settings (key, value) 
-            VALUES ('lastBackup', '${new Date().toISOString()}') 
-            ON CONFLICT (key) DO UPDATE SET value = excluded.value
-        `));
+            VALUES ('lastBackup', ${backupTime}) 
+            ON CONFLICT (key) DO UPDATE SET value = ${backupTime}
+        `);
 
         console.log(`Successfully created and encrypted local backup: ${encFilePath}`);
         

@@ -53,11 +53,11 @@ export async function POST(request: Request) {
         await db.transaction(async (tx) => {
             // First, check if this EXACT client already exists natively
             const safePhone = client_phone || '';
-            const existingRes = await tx.execute(sql.raw(`
+            const existingRes = await tx.execute(sql`
                 SELECT id FROM clients 
-                WHERE name = '${client_name}' AND (phone = '${safePhone}' OR (phone = '' AND '${safePhone}' = '')) 
+                WHERE name = ${client_name} AND (phone = ${safePhone} OR (phone = '' AND ${safePhone} = '')) 
                 LIMIT 1
-            `));
+            `);
             const existing = existingRes.rows[0];
 
             let clientId: number;

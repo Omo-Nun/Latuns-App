@@ -43,24 +43,24 @@ export async function POST(req: Request) {
         // 2. Update role in settings table
         const newRole = forceStandby ? 'Standby' : 'Primary';
         
-        await db.execute(sql.raw(`
+        await db.execute(sql`
             INSERT INTO settings (key, value) 
-            VALUES ('nodeRole', '${newRole}') 
-            ON CONFLICT (key) DO UPDATE SET value = excluded.value
-        `));
+            VALUES ('nodeRole', ${newRole}) 
+            ON CONFLICT (key) DO UPDATE SET value = ${newRole}
+        `);
 
         // 3. Save redirect URL if we are stepping down, or clear it if stepping up
         if (newRole === 'Standby') {
             const redirectUrl = body.redirectUrl || (process.env.PEER_NODE_ADDRESS ? `http://${process.env.PEER_NODE_ADDRESS}:3000` : null);
             if (redirectUrl) {
-                await db.execute(sql.raw(`
+                await db.execute(sql`
                     INSERT INTO settings (key, value) 
-                    VALUES ('handover_redirect_url', '${redirectUrl}') 
-                    ON CONFLICT (key) DO UPDATE SET value = excluded.value
-                `));
+                    VALUES ('handover_redirect_url', ${redirectUrl}) 
+                    ON CONFLICT (key) DO UPDATE SET value = ${redirectUrl}
+                `);
             }
         } else {
-            await db.execute(sql.raw(`DELETE FROM settings WHERE key = 'handover_redirect_url'`));
+            await db.execute(sql`DELETE FROM settings WHERE key = 'handover_redirect_url'`);
         }
 
         return NextResponse.json({ 

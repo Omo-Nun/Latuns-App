@@ -23,6 +23,8 @@ export default function Dashboard() {
     yesterdayQuotes: 0,
     todayVisited: 0,
     yesterdayVisited: 0,
+    dayBeforeYesterdayQuotes: 0,
+    dayBeforeYesterdayVisited: 0,
     totalVisited: 0,
     totalNotVisited: 0,
     totalSent: 0,
@@ -160,6 +162,17 @@ export default function Dashboard() {
     return 'Medium';
   };
 
+  const calcTrend = (current: number, previous: number) => {
+    if (!previous) return current > 0 ? 100 : 0;
+    return Math.round(((current - previous) / previous) * 100);
+  };
+  
+  const formatTrend = (trend: number, periodStr: string) => {
+    if (trend === 0) return `— 0% vs ${periodStr}`;
+    if (trend > 0) return `↑ ${trend}% vs ${periodStr}`;
+    return `↓ ${Math.abs(trend)}% vs ${periodStr}`;
+  };
+
   return (
     <div>
       {/* ── Header ── */}
@@ -214,7 +227,7 @@ export default function Dashboard() {
           <div className="dash-metric-pill-content">
             <div className="dash-metric-pill-label">Today's Quotes</div>
             <div className="dash-metric-pill-value">{loading ? "—" : data.todayQuotes}</div>
-            <div className="dash-metric-pill-trend">— 0% vs yesterday</div>
+            <div className="dash-metric-pill-trend">{formatTrend(calcTrend(data.todayQuotes, data.yesterdayQuotes), 'yesterday')}</div>
           </div>
         </Link>
 
@@ -226,7 +239,7 @@ export default function Dashboard() {
           <div className="dash-metric-pill-content">
             <div className="dash-metric-pill-label">Clients Visited Today</div>
             <div className="dash-metric-pill-value">{loading ? "—" : data.todayVisited}</div>
-            <div className="dash-metric-pill-trend">— 0% vs yesterday</div>
+            <div className="dash-metric-pill-trend">{formatTrend(calcTrend(data.todayVisited, data.yesterdayVisited), 'yesterday')}</div>
           </div>
         </Link>
 
@@ -238,7 +251,7 @@ export default function Dashboard() {
           <div className="dash-metric-pill-content">
             <div className="dash-metric-pill-label">Yesterday's Quotes</div>
             <div className="dash-metric-pill-value">{loading ? "—" : data.yesterdayQuotes}</div>
-            <div className="dash-metric-pill-trend">— 0% vs previous day</div>
+            <div className="dash-metric-pill-trend">{formatTrend(calcTrend(data.yesterdayQuotes, data.dayBeforeYesterdayQuotes), 'previous day')}</div>
           </div>
         </Link>
 
@@ -250,7 +263,7 @@ export default function Dashboard() {
           <div className="dash-metric-pill-content">
             <div className="dash-metric-pill-label">Visited Yesterday</div>
             <div className="dash-metric-pill-value">{loading ? "—" : data.yesterdayVisited}</div>
-            <div className="dash-metric-pill-trend">— 0% vs previous day</div>
+            <div className="dash-metric-pill-trend">{formatTrend(calcTrend(data.yesterdayVisited, data.dayBeforeYesterdayVisited), 'previous day')}</div>
           </div>
         </Link>
       </div>

@@ -14,23 +14,22 @@ export async function GET(request: Request) {
         const offset = (page - 1) * limit;
         const search = searchParams.get('search') || '';
 
-        let whereSql = '';
+        let whereClause = sql``;
         if (search) {
-            whereSql = `WHERE name ILIKE '%${search}%' OR phone ILIKE '%${search}%'`;
+            const searchPattern = `%${search}%`;
+            whereClause = sql`WHERE name ILIKE ${searchPattern} OR phone ILIKE ${searchPattern}`;
         }
 
-        const query = `
+        const clientsRes = await db.execute(sql`
             SELECT id, name, phone, address, state, city, updated_at, created_at 
             FROM clients 
-            ${whereSql} 
+            ${whereClause} 
             ORDER BY created_at DESC 
             LIMIT ${limit} OFFSET ${offset}
-        `;
-        const clientsRes = await db.execute(sql.raw(query));
+        `);
         const clientsList = clientsRes.rows;
 
-        const countQuery = `SELECT COUNT(*) as count FROM clients ${whereSql}`;
-        const countRes = await db.execute(sql.raw(countQuery));
+        const countRes = await db.execute(sql`SELECT COUNT(*) as count FROM clients ${whereClause}`);
         const totalCount = Number(countRes.rows[0].count);
         const totalPages = Math.ceil(totalCount / limit);
 

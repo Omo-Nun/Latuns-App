@@ -251,24 +251,63 @@ export default function QuotationDetailPage() {
         fetchQuote();
     };
 
+    const printElement = async (ref: React.RefObject<HTMLDivElement | null>, title: string) => {
+        if (!ref.current) return;
+        setExporting(true);
+        try {
+            // Render the template to an image using the same pipeline as PDF/JPG exports
+            const canvas = await html2canvas(ref.current, { scale: 2, useCORS: true });
+            const imgDataUrl = canvas.toDataURL('image/png');
+            
+            // Open a popup with just the image — Chrome prints a single <img> instantly
+            const printWin = window.open('', '_blank', 'width=850,height=1100');
+            if (!printWin) {
+                toast.error('Pop-up blocked. Please allow pop-ups for this site to print.');
+                setExporting(false);
+                return;
+            }
+            
+            printWin.document.open();
+            printWin.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<title>${title}</title>
+<style>
+html, body { margin: 0; padding: 0; background: white; }
+img { display: block; width: 100%; height: auto; }
+@page { size: A4 portrait; margin: 0; }
+@media print { body { margin: 0; } img { width: 100%; } }
+</style>
+</head>
+<body><img src="${imgDataUrl}" /></body>
+</html>`);
+            printWin.document.close();
+            
+            const img = printWin.document.querySelector('img');
+            const triggerPrint = () => {
+                printWin.focus();
+                printWin.print();
+                printWin.onafterprint = () => printWin.close();
+            };
+            if (img && img.complete) {
+                triggerPrint();
+            } else if (img) {
+                img.onload = triggerPrint;
+            } else {
+                setTimeout(triggerPrint, 200);
+            }
+        } catch (err) {
+            toast.error('Print failed. Please try again.');
+        }
+        setExporting(false);
+    };
+
     const handlePrintQuote = () => {
-        setPrintMode('quote');
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                window.print();
-                setPrintMode('none');
-            }, 300);
-        });
+        printElement(exportRef, `Quotation ${data?.quote_number || id}`);
     };
 
     const handlePrintLedger = () => {
-        setPrintMode('ledger');
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                window.print();
-                setPrintMode('none');
-            }, 300);
-        });
+        printElement(ledgerExportRef, `Ledger ${data?.quote_number || id}`);
     };
 
     const handleAddPayment = async (e: React.FormEvent) => {

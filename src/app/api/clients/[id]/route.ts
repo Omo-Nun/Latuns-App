@@ -16,7 +16,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             return NextResponse.json({ error: 'Client not found' }, { status: 404 });
         }
 
-        const quotationsRes = await db.execute(sql.raw(`
+        const quotationsRes = await db.execute(sql`
             SELECT 
                 q.*,
                 COALESCE(SUM(qi.total), 0) as subtotal,
@@ -28,10 +28,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             WHERE q.client_id = ${id}
             GROUP BY q.id
             ORDER BY q.created_at DESC
-        `));
+        `);
         const quotationsList = quotationsRes.rows;
 
-        const itemsRes = await db.execute(sql.raw(`SELECT * FROM quotation_items WHERE quotation_id IN (SELECT id FROM quotations WHERE client_id = ${id})`));
+        const itemsRes = await db.execute(sql`SELECT * FROM quotation_items WHERE quotation_id IN (SELECT id FROM quotations WHERE client_id = ${id})`);
         const allItems = itemsRes.rows;
 
         const quotationsWithItems = quotationsList.map((q: any) => ({
@@ -39,28 +39,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             items: allItems.filter((i: any) => i.quotation_id === q.id)
         }));
 
-        const estimatorsRes = await db.execute(sql.raw(`
+        const estimatorsRes = await db.execute(sql`
             SELECT DISTINCT a.id, a.name, a.phone
             FROM quotations q
             JOIN agents a ON q.agent_id = a.id
             WHERE q.client_id = ${id}
-        `));
+        `);
         const estimators = estimatorsRes.rows;
 
-        const activityLogsRes = await db.execute(sql.raw(`
+        const activityLogsRes = await db.execute(sql`
             SELECT * FROM activity_logs
             WHERE client_id = ${id}
             ORDER BY created_at DESC
-        `));
+        `);
         const activity_logs = activityLogsRes.rows;
 
-        const paymentsRes = await db.execute(sql.raw(`
+        const paymentsRes = await db.execute(sql`
             SELECT p.*, q.quote_number
             FROM payments p
             JOIN quotations q ON p.quotation_id = q.id
             WHERE q.client_id = ${id}
             ORDER BY p.date DESC
-        `));
+        `);
         const paymentsList = paymentsRes.rows;
 
         return NextResponse.json({

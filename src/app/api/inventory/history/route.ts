@@ -10,27 +10,24 @@ export async function GET(request: Request) {
         const fromDate = searchParams.get('from');
         const toDate = searchParams.get('to');
 
-        let query = `
+        const conditions: ReturnType<typeof sql>[] = [];
+
+        if (fromDate) {
+            conditions.push(sql`l.created_at::date >= ${fromDate}::date`);
+        }
+        if (toDate) {
+            conditions.push(sql`l.created_at::date <= ${toDate}::date`);
+        }
+
+        const whereClause = conditions.length > 0 ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+
+        const logsRes = await db.execute(sql`
             SELECT l.*, i.name as item_name, i.unit as item_unit 
             FROM inventory_logs l 
             JOIN inventory_items i ON l.item_id = i.id
-        `;
-        const conditions = [];
-
-        if (fromDate) {
-            conditions.push(`DATE(l.created_at) >= DATE('${fromDate}')`);
-        }
-        if (toDate) {
-            conditions.push(`DATE(l.created_at) <= DATE('${toDate}')`);
-        }
-
-        if (conditions.length > 0) {
-            query += " WHERE " + conditions.join(" AND ");
-        }
-
-        query += " ORDER BY l.created_at DESC";
-
-        const logsRes = await db.execute(sql.raw(query));
+            ${whereClause}
+            ORDER BY l.created_at DESC
+        `);
         return NextResponse.json(logsRes.rows);
     } catch (error) {
         console.error("Global history error:", error);

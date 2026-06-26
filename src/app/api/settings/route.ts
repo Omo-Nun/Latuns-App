@@ -51,11 +51,11 @@ export async function PUT(request: Request) {
 
             for (const [key, value] of Object.entries(data)) {
                 if (typeof value === 'string' && !['oldCategoryName', 'newCategoryName'].includes(key)) {
-                    await tx.execute(sql.raw(`
+                    await tx.execute(sql`
                         INSERT INTO settings (key, value) 
-                        VALUES ('${key}', '${value}') 
-                        ON CONFLICT (key) DO UPDATE SET value = excluded.value
-                    `));
+                        VALUES (${key}, ${value}) 
+                        ON CONFLICT (key) DO UPDATE SET value = ${value}
+                    `);
                 }
             }
 

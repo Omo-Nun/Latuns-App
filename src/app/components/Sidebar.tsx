@@ -203,17 +203,25 @@ export default function Sidebar() {
             <aside className={`sidebar ${isMobileOpen ? 'mobile-open' : ''}`}>
                 <div className="brand">
                     {!isCollapsed ? (
-                        <Image src="/Logo 2026.svg" alt="Latuns Logo" width={140} height={52} className="object-contain flex-shrink-0" style={{ filter: 'var(--logo-filter)' }} priority />
+                        <>
+                            <Image src="/Logo 2026.svg" alt="Latuns Logo" width={140} height={52} className="object-contain flex-shrink-0" style={{ filter: 'var(--logo-filter)' }} priority />
+                            <button
+                                onClick={toggleCollapse}
+                                className="desktop-collapse-toggle"
+                                title="Collapse sidebar"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
+                        </>
                     ) : (
-                        <div className="brand-icon-collapsed">L</div>
+                        <button
+                            onClick={toggleCollapse}
+                            className="desktop-collapse-toggle"
+                            title="Expand sidebar"
+                        >
+                            <ChevronRight size={16} />
+                        </button>
                     )}
-                    <button
-                        onClick={toggleCollapse}
-                        className="desktop-collapse-toggle"
-                        title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                    >
-                        {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-                    </button>
                 </div>
 
                 {/* Notifications modal container */}

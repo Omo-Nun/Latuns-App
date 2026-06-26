@@ -24,7 +24,7 @@ export async function GET(request: Request) {
             .orderBy(desc(notifications.createdAt))
             .limit(50);
         
-        const countRes = await db.execute(sql.raw(`SELECT COUNT(*) as count FROM notifications WHERE user_id = ${session.user.id} AND is_read = false`));
+        const countRes = await db.execute(sql`SELECT COUNT(*) as count FROM notifications WHERE user_id = ${session.user.id} AND is_read = false`);
         const unreadCount = Number(countRes.rows[0].count);
 
         return NextResponse.json({ notifications: notificationsList, unreadCount });

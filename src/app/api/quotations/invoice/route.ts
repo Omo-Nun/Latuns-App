@@ -30,7 +30,7 @@ export async function POST(request: Request) {
         let newId = 0;
 
         await db.transaction(async (tx) => {
-            const latestRes = await tx.execute(sql.raw(`SELECT quote_number FROM quotations WHERE quote_number LIKE '${prefix}%' ORDER BY id DESC LIMIT 1`));
+            const latestRes = await tx.execute(sql`SELECT quote_number FROM quotations WHERE quote_number LIKE ${prefix + '%'} ORDER BY id DESC LIMIT 1`);
             const latest = latestRes.rows[0] as any;
 
             let serial = 1;

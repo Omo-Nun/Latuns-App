@@ -25,48 +25,46 @@ export async function GET(request: Request) {
         const sortDir = searchParams.get('sortDir') === 'asc' ? 'ASC' : 'DESC';
         const offset = (page - 1) * limit;
 
-        const whereClauses = [];
+        const conditions: ReturnType<typeof sql>[] = [];
 
         if (search) {
-            whereClauses.push(`(q.client_name ILIKE '%${search}%' OR q.client_address ILIKE '%${search}%' OR q.quote_number ILIKE '%${search}%')`);
+            const searchPattern = `%${search}%`;
+            conditions.push(sql`(q.client_name ILIKE ${searchPattern} OR q.client_address ILIKE ${searchPattern} OR q.quote_number ILIKE ${searchPattern})`);
         }
 
         if (startDate && endDate) {
-            whereClauses.push(`DATE(q.created_at) >= '${startDate}' AND DATE(q.created_at) <= '${endDate}'`);
+            conditions.push(sql`q.created_at::date >= ${startDate}::date AND q.created_at::date <= ${endDate}::date`);
         } else if (date) {
-            whereClauses.push(`DATE(q.created_at) = '${date}'`);
+            conditions.push(sql`q.created_at::date = ${date}::date`);
         }
 
         if (year) {
-            whereClauses.push(`EXTRACT(YEAR FROM q.created_at)::text = '${year}'`);
+            conditions.push(sql`EXTRACT(YEAR FROM q.created_at)::text = ${year}`);
         }
 
         if (visited) {
-            whereClauses.push(`q.visit_status = '${visited}'`);
+            conditions.push(sql`q.visit_status = ${visited}`);
         }
 
-        const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+        const whereClause = conditions.length > 0 ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
 
         const allowedSortKeys = ['id', 'created_at', 'client_name', 'project_type', 'project_status', 'subtotal'];
         const safeSortKey = allowedSortKeys.includes(sortKey) ? (sortKey === 'subtotal' ? 'subtotal' : `q.${sortKey}`) : 'q.created_at';
 
-        const query = `
+        const rawQuotesRes = await db.execute(sql`
             SELECT 
                 q.*, 
                 COALESCE(SUM(qi.total), 0) as subtotal,
                 COALESCE((SELECT SUM(amount) FROM payments WHERE quotation_id = q.id), 0) as total_paid
             FROM quotations q
             LEFT JOIN quotation_items qi ON q.id = qi.quotation_id
-            ${whereSql}
+            ${whereClause}
             GROUP BY q.id 
-            ORDER BY ${safeSortKey} ${sortDir} 
+            ORDER BY ${sql.raw(safeSortKey)} ${sql.raw(sortDir)} 
             LIMIT ${limit} OFFSET ${offset}
-        `;
+        `);
 
-        const countQuery = `SELECT COUNT(DISTINCT q.id) as count FROM quotations q ${whereSql}`;
-
-        const rawQuotesRes = await db.execute(sql.raw(query));
-        const countRes = await db.execute(sql.raw(countQuery));
+        const countRes = await db.execute(sql`SELECT COUNT(DISTINCT q.id) as count FROM quotations q ${whereClause}`);
         const totalCount = Number(countRes.rows[0].count);
 
         return NextResponse.json({
@@ -118,7 +116,7 @@ export async function POST(request: Request) {
 
         await db.transaction(async (tx) => {
             // Find latest quote with this prefix
-            const latestRes = await tx.execute(sql.raw(`SELECT quote_number FROM quotations WHERE quote_number LIKE '${prefix}%' ORDER BY id DESC LIMIT 1`));
+            const latestRes = await tx.execute(sql`SELECT quote_number FROM quotations WHERE quote_number LIKE ${prefix + '%'} ORDER BY id DESC LIMIT 1`);
             const latest = latestRes.rows[0] as any;
 
             let serial = 1;
