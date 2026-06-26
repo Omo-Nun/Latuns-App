@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Package, FileText, Settings, Users, PieChart, Moon, Sun, Menu, ChevronLeft, ChevronRight, CreditCard, Info, LogOut, User, Mail, CheckSquare, Bell, X as CloseIcon, Check } from "lucide-react";
+import { LayoutDashboard, Package, FileText, Settings, Users, PieChart, Moon, Sun, Menu, ChevronLeft, ChevronRight, CreditCard, Info, LogOut, User, Mail, CheckSquare, Bell, X as CloseIcon, Check, MoreHorizontal } from "lucide-react";
 
 export default function Sidebar() {
     const pathname = usePathname();
@@ -21,6 +21,7 @@ export default function Sidebar() {
     const [permissions, setPermissions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+    const [showCollapsedActions, setShowCollapsedActions] = useState(false);
 
     useEffect(() => {
         const savedTheme = localStorage.getItem('theme');
@@ -152,10 +153,12 @@ export default function Sidebar() {
             document.body.classList.remove('sidebar-collapsed');
             localStorage.setItem('sidebar-collapsed', 'false');
             setIsCollapsed(false);
+            setShowCollapsedActions(false);
         } else {
             document.body.classList.add('sidebar-collapsed');
             localStorage.setItem('sidebar-collapsed', 'true');
             setIsCollapsed(true);
+            setShowCollapsedActions(false);
         }
     };
 
@@ -376,53 +379,70 @@ export default function Sidebar() {
 
                 <div className="px-4 py-4 mt-auto flex flex-col gap-1">
                     {/* Action Icons Row — Horizontal when expanded */}
-                    <div className={`flex ${isCollapsed ? 'flex-col gap-1' : 'flex-row gap-2 justify-start'} items-center`}>
-                        {/* Logout */}
+                    {isCollapsed && (
                         <button
-                            onClick={handleLogout}
-                            className={`border-none outline-none bg-transparent cursor-pointer flex items-center justify-center ${isCollapsed ? 'w-full' : ''} px-2 py-2 rounded-lg hover:bg-[var(--sidebar-hover)] transition-all group`}
-                            title="Logout"
+                            onClick={() => setShowCollapsedActions(!showCollapsedActions)}
+                            className="border-none outline-none bg-transparent cursor-pointer flex items-center justify-center w-full px-2 py-2 rounded-lg hover:bg-[var(--sidebar-hover)] transition-all group"
+                            title={showCollapsedActions ? "Hide Actions" : "More Actions"}
                         >
-                            <span className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors" style={{ background: 'rgba(239,68,68,0.1)' }}>
-                                <LogOut size={24} className="text-red-500 group-hover:text-red-400 transition-colors" />
+                            <span className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors relative ${showCollapsedActions ? 'bg-[var(--sidebar-hover)]' : ''}`}>
+                                <MoreHorizontal size={24} className={`transition-colors ${showCollapsedActions ? 'text-[var(--text-main)]' : 'text-[var(--text-muted)] group-hover:text-[var(--text-main)]'}`} />
+                                {unreadNotificationCount > 0 && !showCollapsedActions && (
+                                    <span className="absolute top-1.5 right-1.5 bg-red-500 w-2.5 h-2.5 rounded-full border-2 border-[var(--sidebar-bg)]"></span>
+                                )}
                             </span>
                         </button>
+                    )}
 
-                        {/* Theme Toggle */}
-                        <button
-                            onClick={toggleTheme}
-                            className={`border-none outline-none bg-transparent cursor-pointer flex items-center justify-center ${isCollapsed ? 'w-full' : ''} px-2 py-2 rounded-lg hover:bg-[var(--sidebar-hover)] transition-all group`}
-                            title={isDarkMode ? "Light Mode" : "Dark Mode"}
-                        >
-                            {isDarkMode ? (
-                                <span className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors" style={{ background: 'rgba(251,191,36,0.12)' }}>
-                                    <Sun size={24} className="text-yellow-400 group-hover:text-yellow-300 transition-colors" />
+                    {(!isCollapsed || showCollapsedActions) && (
+                        <div className={`flex ${isCollapsed ? 'flex-col gap-1 mt-1' : 'flex-row gap-2 justify-start'} items-center`}>
+                            {/* Logout */}
+                            <button
+                                onClick={handleLogout}
+                                className={`border-none outline-none bg-transparent cursor-pointer flex items-center justify-center ${isCollapsed ? 'w-full' : ''} px-2 py-2 rounded-lg hover:bg-[var(--sidebar-hover)] transition-all group`}
+                                title="Logout"
+                            >
+                                <span className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors" style={{ background: 'rgba(239,68,68,0.1)' }}>
+                                    <LogOut size={24} className="text-red-500 group-hover:text-red-400 transition-colors" />
                                 </span>
-                            ) : (
-                                <span className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors" style={{ background: 'rgba(99,102,241,0.12)' }}>
-                                    <Moon size={24} className="text-indigo-500 group-hover:text-indigo-400 transition-colors" />
-                                </span>
-                            )}
-                        </button>
+                            </button>
 
-                        {/* Notification Button */}
-                        <button
-                            onClick={() => setShowNotifications(true)}
-                            className={`border-none outline-none bg-transparent cursor-pointer flex items-center justify-center ${isCollapsed ? 'w-full' : ''} px-2 py-2 rounded-lg hover:bg-[var(--sidebar-hover)] transition-all group`}
-                            title="Notifications"
-                        >
-                            <div className="relative flex items-center justify-center">
-                                <span className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors" style={{ background: 'rgba(245,158,11,0.12)' }}>
-                                    <Bell size={24} className="text-amber-500 group-hover:text-amber-400 transition-colors" />
-                                </span>
-                                {unreadNotificationCount > 0 && (
-                                    <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center border-2 border-[var(--sidebar-bg)]">
-                                        {unreadNotificationCount}
+                            {/* Theme Toggle */}
+                            <button
+                                onClick={toggleTheme}
+                                className={`border-none outline-none bg-transparent cursor-pointer flex items-center justify-center ${isCollapsed ? 'w-full' : ''} px-2 py-2 rounded-lg hover:bg-[var(--sidebar-hover)] transition-all group`}
+                                title={isDarkMode ? "Light Mode" : "Dark Mode"}
+                            >
+                                {isDarkMode ? (
+                                    <span className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors" style={{ background: 'rgba(251,191,36,0.12)' }}>
+                                        <Sun size={24} className="text-yellow-400 group-hover:text-yellow-300 transition-colors" />
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors" style={{ background: 'rgba(99,102,241,0.12)' }}>
+                                        <Moon size={24} className="text-indigo-500 group-hover:text-indigo-400 transition-colors" />
                                     </span>
                                 )}
-                            </div>
-                        </button>
-                    </div>
+                            </button>
+
+                            {/* Notification Button */}
+                            <button
+                                onClick={() => setShowNotifications(true)}
+                                className={`border-none outline-none bg-transparent cursor-pointer flex items-center justify-center ${isCollapsed ? 'w-full' : ''} px-2 py-2 rounded-lg hover:bg-[var(--sidebar-hover)] transition-all group`}
+                                title="Notifications"
+                            >
+                                <div className="relative flex items-center justify-center">
+                                    <span className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors" style={{ background: 'rgba(245,158,11,0.12)' }}>
+                                        <Bell size={24} className="text-amber-500 group-hover:text-amber-400 transition-colors" />
+                                    </span>
+                                    {unreadNotificationCount > 0 && (
+                                        <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center border-2 border-[var(--sidebar-bg)]">
+                                            {unreadNotificationCount}
+                                        </span>
+                                    )}
+                                </div>
+                            </button>
+                        </div>
+                    )}
 
                     {/* Inline Logout Confirmation */}
                     {showLogoutConfirm && (

@@ -269,6 +269,45 @@ export default function NodeManagementPanel() {
                         <strong>Hardware Suitability Warning:</strong> Only provision "High-Spec PC" or "Standard Laptop with SSD" devices as server hosts. Mobile devices are strictly prohibited from acting as nodes.
                     </div>
                 </div>
+
+                <details className="mt-6 border border-gray-200 rounded-lg bg-white overflow-hidden shadow-sm">
+                    <summary className="font-semibold p-4 cursor-pointer hover:bg-gray-50 flex items-center gap-2 select-none text-gray-800">
+                        Node Management Guide & Procedures
+                    </summary>
+                    <div className="p-4 border-t border-gray-200 text-sm text-gray-700 space-y-4">
+                        <div>
+                            <h4 className="font-bold text-gray-900 mb-1">What is Node Management?</h4>
+                            <p>This system operates on a High Availability (HA) cluster model with two nodes (computers). One acts as the <strong>Primary</strong> (handling all live write operations) and the other as the <strong>Standby</strong> (mirroring data and waiting to take over if the Primary fails).</p>
+                        </div>
+                        
+                        <div>
+                            <h4 className="font-bold text-gray-900 mb-1">End of Day Trigger [COB]</h4>
+                            <ul className="list-disc pl-5 space-y-1">
+                                <li><strong>Procedure:</strong> Click the "End Day Trigger" button when the office closes.</li>
+                                <li><strong>What it does:</strong> It creates a full, encrypted backup of the database and locks concurrent writes, ensuring data integrity overnight.</li>
+                                <li><strong>Precaution:</strong> Ensure all staff have saved their work before triggering this, as it may briefly pause active operations.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h4 className="font-bold text-gray-900 mb-1">Role Handover (Taking Over as Primary)</h4>
+                            <ul className="list-disc pl-5 space-y-1">
+                                <li><strong>Procedure:</strong> If this node is currently "Standby" and you need it to become "Primary", click the "[Take Over as Primary]" button.</li>
+                                <li><strong>What it does:</strong> It signals the current Primary to step down, creates a safety backup, and promotes this node to Primary.</li>
+                                <li><strong>Precaution:</strong> Do not swap roles rapidly. Ensure the current Primary is online and reachable so the handover happens gracefully without data loss.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h4 className="font-bold text-gray-900 mb-1">Force Override (Split-Brain Resolution)</h4>
+                            <ul className="list-disc pl-5 space-y-1">
+                                <li><strong>Procedure:</strong> Use the red "Force Override" button.</li>
+                                <li><strong>What it does:</strong> Bypasses network checks and forces the node into the selected role immediately.</li>
+                                <li><strong>Precaution:</strong> <strong className="text-red-600">DANGER!</strong> Use this ONLY if the other node is completely dead or network connectivity is irreparably broken. If both nodes believe they are Primary simultaneously ("Split-Brain"), you will face severe data conflicts and data loss. Always ensure the other node is physically turned off or forced to Standby before forcing this one to Primary.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </details>
             </div>
         </div>
     );
