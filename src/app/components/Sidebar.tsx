@@ -232,32 +232,32 @@ export default function Sidebar() {
                 {showNotifications && typeof document !== 'undefined' && createPortal(
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] backdrop-blur-[4px] p-5 md:p-8" onClick={() => setShowNotifications(false)}>
                         <div 
-                            className="w-full max-w-xl max-h-[85vh] bg-[var(--bg-color-alt)] rounded-xl flex flex-col shadow-2xl overflow-hidden border border-[var(--border)]" 
+                            className="w-full max-w-3xl h-[85vh] max-h-[900px] bg-[var(--bg-color-alt)] rounded-xl flex flex-col shadow-2xl overflow-hidden border border-[var(--border)]" 
                             onClick={e => e.stopPropagation()}
                         >
-                                <div className="px-5 py-4 border-b flex justify-between items-center bg-[var(--bg-color)]">
-                                    <div className="flex items-center gap-3">
-                                        <Bell size={20} className="text-primary" />
-                                        <h2 className="m-0 text-lg font-extrabold">Notification Center</h2>
+                                <div className="px-8 py-6 border-b flex justify-between items-center bg-[var(--bg-color)]">
+                                    <div className="flex items-center gap-4">
+                                        <Bell size={28} className="text-primary" />
+                                        <h2 className="m-0 text-2xl font-extrabold">Notification Center</h2>
                                     </div>
-                                    <div className="flex gap-3 items-center">
-                                        <button onClick={markAllRead} className="text-[12px] text-primary bg-transparent border-none cursor-pointer font-semibold">Mark all as read</button>
-                                        <button onClick={() => setShowNotifications(false)} className="bg-transparent border-none cursor-pointer text-muted flex items-center justify-center">
-                                            <CloseIcon size={20} />
+                                    <div className="flex gap-4 items-center">
+                                        <button onClick={markAllRead} className="text-[15px] text-primary bg-transparent border-none cursor-pointer font-semibold hover:underline">Mark all as read</button>
+                                        <button onClick={() => setShowNotifications(false)} className="bg-transparent border-none cursor-pointer text-muted flex items-center justify-center hover:text-[var(--text-main)] transition-colors">
+                                            <CloseIcon size={28} />
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto py-1">
+                                <div className="flex-1 overflow-y-auto py-2">
                                     {notifications.length === 0 ? (
-                                        <div className="py-16 px-5 text-center">
-                                            <div className="text-[48px] mb-4 opacity-20">📭</div>
-                                            <div className="text-muted text-[14px]">Your notification inbox is empty.</div>
+                                        <div className="py-24 px-8 text-center flex flex-col items-center justify-center h-full">
+                                            <div className="text-[72px] mb-6 opacity-20">📭</div>
+                                            <div className="text-muted text-[18px]">Your notification inbox is empty.</div>
                                         </div>
                                     ) : (
                                         notifications.map(n => (
                                              <div 
                                                  key={n.id} 
-                                                 className={`px-5 py-4 border-b cursor-pointer flex gap-4 items-start notification-item transition-colors hover:bg-[var(--sidebar-hover)] ${n.is_read ? 'read' : 'unread'}`}
+                                                 className={`px-8 py-6 border-b cursor-pointer flex gap-5 items-start notification-item transition-colors hover:bg-[var(--sidebar-hover)] ${n.is_read ? 'read' : 'unread'}`}
                                                  onClick={() => {
                                                      markNotificationRead(n.id);
                                                      if (n.ref_type === 'task') router.push('/tasks');
@@ -265,46 +265,46 @@ export default function Sidebar() {
                                                  }}
                                              >
                                                  <div 
-                                                     className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+                                                     className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
                                                          n.is_read 
                                                              ? 'bg-[var(--sidebar-hover)] text-[var(--text-muted)]' 
                                                              : 'bg-primary/10 text-primary border border-primary/20'
                                                      }`}
                                                  >
-                                                     <Bell size={16} />
+                                                     <Bell size={22} />
                                                  </div>
                                                  <div className="flex-1 min-w-0">
-                                                     <div className="flex justify-between items-baseline gap-2 mb-1">
-                                                         <div className={`text-[14px] text-[var(--text-main)] truncate ${n.is_read ? 'font-medium' : 'font-semibold'}`}>
+                                                     <div className="flex justify-between items-baseline gap-3 mb-2">
+                                                         <div className={`text-[17px] text-[var(--text-main)] truncate ${n.is_read ? 'font-medium' : 'font-extrabold'}`}>
                                                              {n.title}
                                                          </div>
-                                                         <div className="text-[11px] text-[var(--text-muted)] opacity-85 whitespace-nowrap">
+                                                         <div className="text-[13px] text-[var(--text-muted)] opacity-85 whitespace-nowrap font-medium">
                                                              {new Date(n.created_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}
                                                          </div>
                                                      </div>
-                                                     <div className="text-[13px] text-[var(--text-muted)] leading-normal">{n.message}</div>
+                                                     <div className="text-[15px] text-[var(--text-muted)] leading-relaxed">{n.message}</div>
                                                      {!n.is_read && (
-                                                         <div className="mt-2 flex items-center justify-between">
-                                                             <span className="text-[10px] uppercase font-bold text-primary tracking-wider px-2 py-0.5 rounded-full bg-primary/10 border border-primary/25">New Alert</span>
+                                                         <div className="mt-4 flex items-center justify-between">
+                                                             <span className="text-[12px] uppercase font-bold text-primary tracking-wider px-3 py-1 rounded-full bg-primary/10 border border-primary/25">New Alert</span>
                                                              <button
                                                                  onClick={(e) => {
                                                                      e.stopPropagation();
                                                                      markNotificationRead(n.id);
                                                                  }}
                                                                  style={{
-                                                                     padding: '4px 8px',
-                                                                     borderRadius: '4px',
+                                                                     padding: '8px 14px',
+                                                                     borderRadius: '6px',
                                                                      border: '1px solid var(--border)',
                                                                      background: 'var(--bg-color)',
                                                                      color: 'var(--text-muted)',
                                                                      cursor: 'pointer',
                                                                      display: 'flex',
                                                                      alignItems: 'center',
-                                                                     gap: '4px',
-                                                                     fontSize: '11px',
-                                                                     fontWeight: '600',
+                                                                     gap: '6px',
+                                                                     fontSize: '13px',
+                                                                     fontWeight: '700',
                                                                      transition: 'all 0.2s',
-                                                                     boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                                                     boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                                                                  }}
                                                                  onMouseEnter={(e) => {
                                                                      e.currentTarget.style.color = 'var(--success)';
@@ -318,7 +318,7 @@ export default function Sidebar() {
                                                                  }}
                                                                  title="Mark as read"
                                                              >
-                                                                 <Check size={12} /> Mark Read
+                                                                 <Check size={16} /> Mark Read
                                                              </button>
                                                          </div>
                                                      )}
@@ -327,8 +327,8 @@ export default function Sidebar() {
                                          ))
                                     )}
                                 </div>
-                                <div className="px-5 py-3 border-t bg-[var(--bg-color)] flex justify-center">
-                                    <button onClick={() => setShowNotifications(false)} className="btn btn-outline w-full text-[13px] py-1.5">Close</button>
+                                <div className="px-8 py-5 border-t bg-[var(--bg-color)] flex justify-center">
+                                    <button onClick={() => setShowNotifications(false)} className="btn btn-outline w-full text-[16px] font-bold py-3">Close</button>
                                 </div>
                             </div>
                         </div>,
@@ -446,28 +446,28 @@ export default function Sidebar() {
 
                     {/* Full Screen Logout Confirmation */}
                     {showLogoutConfirm && typeof document !== 'undefined' && createPortal(
-                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] backdrop-blur-[4px] p-5" onClick={() => setShowLogoutConfirm(false)}>
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] backdrop-blur-[6px] p-5" onClick={() => setShowLogoutConfirm(false)}>
                             <div 
-                                className="w-full max-w-[340px] bg-[var(--bg-color-alt)] rounded-xl flex flex-col shadow-2xl overflow-hidden border border-red-500/20" 
+                                className="w-full max-w-[440px] bg-[var(--bg-color-alt)] rounded-2xl flex flex-col shadow-2xl overflow-hidden border border-red-500/20" 
                                 onClick={e => e.stopPropagation()}
                             >
-                                <div className="px-5 py-6 text-center flex flex-col items-center">
-                                    <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
-                                        <LogOut size={24} className="text-red-500" />
+                                <div className="px-8 py-10 text-center flex flex-col items-center">
+                                    <div className="w-20 h-20 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-6">
+                                        <LogOut size={36} className="text-red-500" />
                                     </div>
-                                    <h2 className="text-[17px] font-bold mb-1.5 text-[var(--text-main)]">Sign Out</h2>
-                                    <p className="text-[var(--text-muted)] text-[13px] leading-tight m-0">Are you sure you want to sign out of your account?</p>
+                                    <h2 className="text-[24px] font-extrabold mb-3 text-[var(--text-main)]">Sign Out</h2>
+                                    <p className="text-[var(--text-muted)] text-[16px] leading-relaxed m-0 px-4">Are you sure you want to sign out of your account? You will need to log back in to access your dashboard.</p>
                                 </div>
-                                <div className="px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-color)] flex gap-2">
+                                <div className="px-8 py-5 border-t border-[var(--border)] bg-[var(--bg-color)] flex gap-4">
                                     <button
                                         onClick={() => setShowLogoutConfirm(false)}
-                                        className="flex-1 btn btn-outline py-2 text-[13px]"
+                                        className="flex-1 btn btn-outline py-3.5 text-[15px] font-bold rounded-xl"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         onClick={confirmLogout}
-                                        className="flex-1 btn bg-red-500 hover:bg-red-600 text-white border-none py-2 text-[13px] flex justify-center items-center gap-1.5"
+                                        className="flex-1 btn bg-red-500 hover:bg-red-600 text-white border-none py-3.5 text-[15px] font-bold rounded-xl flex justify-center items-center gap-2 transition-colors"
                                     >
                                         Sign out
                                     </button>
