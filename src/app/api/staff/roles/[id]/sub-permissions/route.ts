@@ -15,7 +15,43 @@ export async function GET(
         if (!session || (session.user.role_name !== 'Admin' && String(session.user.role_id) !== String(roleId))) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
-        const result = await db.select().from(subPermissions).where(eq(subPermissions.roleId, Number(roleId)));
+
+        const numericRoleId = Number(roleId);
+
+        // Standard sub-permissions that should exist for every role
+        const standardSubs: { module: string; subModule: string }[] = [
+            { module: 'Settings', subModule: 'General' },
+            { module: 'Settings', subModule: 'Staff' },
+            { module: 'Settings', subModule: 'Node Management' },
+            { module: 'People', subModule: 'Clients' },
+            { module: 'People', subModule: 'Staff' },
+            { module: 'Inventory', subModule: 'Items' },
+            { module: 'Inventory', subModule: 'Assets' },
+            { module: 'Inventory', subModule: 'Requests' },
+            { module: 'Finances', subModule: 'Revenue' },
+            { module: 'Finances', subModule: 'Expenses' },
+        ];
+
+        // Fetch existing sub-permissions
+        const existing = await db.select().from(subPermissions).where(eq(subPermissions.roleId, numericRoleId));
+
+        // Auto-seed any missing standard sub-permissions
+        for (const std of standardSubs) {
+            const exists = existing.some(e => e.module === std.module && e.subModule === std.subModule);
+            if (!exists) {
+                try {
+                    await db.insert(subPermissions).values({
+                        roleId: numericRoleId,
+                        module: std.module,
+                        subModule: std.subModule,
+                        allowed: false,
+                    });
+                } catch { /* ignore duplicate key errors */ }
+            }
+        }
+
+        // Re-fetch after seeding
+        const result = await db.select().from(subPermissions).where(eq(subPermissions.roleId, numericRoleId));
         return NextResponse.json(result.map(p => ({
             ...p,
             sub_module: p.subModule
@@ -46,13 +82,25 @@ export async function PUT(
 
         const allowedVal = allowed ? true : false;
 
-        await db.update(subPermissions)
+        // Try to update existing row
+        const updateResult = await db.update(subPermissions)
             .set({ allowed: allowedVal })
             .where(and(
                 eq(subPermissions.roleId, roleId),
                 eq(subPermissions.module, module),
                 eq(subPermissions.subModule, sub_module)
-            ));
+            ))
+            .returning();
+
+        // If no row existed, insert a new one
+        if (updateResult.length === 0) {
+            await db.insert(subPermissions).values({
+                roleId,
+                module,
+                subModule: sub_module,
+                allowed: allowedVal,
+            });
+        }
 
         // Audit Log
         const roleRes = await db.select({ name: staffRoles.name }).from(staffRoles).where(eq(staffRoles.id, roleId)).limit(1);

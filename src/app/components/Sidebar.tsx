@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -228,13 +229,12 @@ export default function Sidebar() {
                 </div>
 
                 {/* Notifications modal container */}
-                <div className="relative z-50">
-                    {showNotifications && (
-                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] backdrop-blur-sm p-5" onClick={() => setShowNotifications(false)}>
-                            <div 
-                                className="w-full max-w-md max-h-[80vh] bg-[var(--bg-color-alt)] rounded-xl flex flex-col shadow-2xl overflow-hidden" 
-                                onClick={e => e.stopPropagation()}
-                            >
+                {showNotifications && typeof document !== 'undefined' && createPortal(
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] backdrop-blur-[4px] p-5 md:p-8" onClick={() => setShowNotifications(false)}>
+                        <div 
+                            className="w-full max-w-xl max-h-[85vh] bg-[var(--bg-color-alt)] rounded-xl flex flex-col shadow-2xl overflow-hidden border border-[var(--border)]" 
+                            onClick={e => e.stopPropagation()}
+                        >
                                 <div className="px-5 py-4 border-b flex justify-between items-center bg-[var(--bg-color)]">
                                     <div className="flex items-center gap-3">
                                         <Bell size={20} className="text-primary" />
@@ -331,9 +331,9 @@ export default function Sidebar() {
                                     <button onClick={() => setShowNotifications(false)} className="btn btn-outline w-full text-[13px] py-1.5">Close</button>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                </div>
+                        </div>,
+                    document.body
+                )}
 
                 <nav className="nav-links flex-1 mt-4 overflow-y-auto">
                     {filteredNavItems.map((item) => {
@@ -444,34 +444,37 @@ export default function Sidebar() {
                         </div>
                     )}
 
-                    {/* Inline Logout Confirmation */}
-                    {showLogoutConfirm && (
-                        <div className="mx-1 rounded-lg p-3 flex flex-col gap-2" style={{ background: 'var(--bg-color)', border: '1px solid rgba(239,68,68,0.35)' }}>
-                            {!isCollapsed && (
-                                <p className="text-[12px] font-semibold" style={{ color: 'var(--danger)', margin: 0 }}>Sign out of your account?</p>
-                            )}
-                            <div className={`flex gap-2 ${isCollapsed ? 'flex-col' : ''}`}>
-                                <button
-                                    onClick={confirmLogout}
-                                    className="flex-1 py-1.5 px-3 text-white text-[12px] font-semibold rounded-md transition-colors flex items-center justify-center gap-1"
-                                    style={{ background: 'var(--danger)' }}
-                                    onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
-                                    onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-                                >
-                                    <LogOut size={12} />
-                                    {!isCollapsed && 'Sign out'}
-                                </button>
-                                <button
-                                    onClick={() => setShowLogoutConfirm(false)}
-                                    className="flex-1 py-1.5 px-3 text-[12px] font-medium rounded-md transition-colors bg-transparent"
-                                    style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
-                                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--sidebar-hover)')}
-                                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                                >
-                                    {isCollapsed ? '✕' : 'Cancel'}
-                                </button>
+                    {/* Full Screen Logout Confirmation */}
+                    {showLogoutConfirm && typeof document !== 'undefined' && createPortal(
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] backdrop-blur-[4px] p-5" onClick={() => setShowLogoutConfirm(false)}>
+                            <div 
+                                className="w-full max-w-[340px] bg-[var(--bg-color-alt)] rounded-xl flex flex-col shadow-2xl overflow-hidden border border-red-500/20" 
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="px-5 py-6 text-center flex flex-col items-center">
+                                    <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-3">
+                                        <LogOut size={24} className="text-red-500" />
+                                    </div>
+                                    <h2 className="text-[17px] font-bold mb-1.5 text-[var(--text-main)]">Sign Out</h2>
+                                    <p className="text-[var(--text-muted)] text-[13px] leading-tight m-0">Are you sure you want to sign out of your account?</p>
+                                </div>
+                                <div className="px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-color)] flex gap-2">
+                                    <button
+                                        onClick={() => setShowLogoutConfirm(false)}
+                                        className="flex-1 btn btn-outline py-2 text-[13px]"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={confirmLogout}
+                                        className="flex-1 btn bg-red-500 hover:bg-red-600 text-white border-none py-2 text-[13px] flex justify-center items-center gap-1.5"
+                                    >
+                                        Sign out
+                                    </button>
+                                </div>
                             </div>
-                        </div>
+                        </div>,
+                        document.body
                     )}
 
                     {/* User */}

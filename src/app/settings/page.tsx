@@ -103,7 +103,7 @@ export default function SettingsPage() {
                     setUserSubPermissions(settingsPerms);
                     
                     // Check if current tab is allowed
-                    const tabMap: any = { 'security': 'Staff', 'general': 'General' };
+                    const tabMap: any = { 'security': 'Staff', 'general': 'General', 'cluster': 'Node Management' };
                     const subName = tabMap[activeTab];
                     if (subName) {
                         const p = settingsPerms.find((sp: any) => sp.sub_module === subName);
@@ -370,7 +370,7 @@ export default function SettingsPage() {
                                 <Shield size={18} /> Roles & Permissions Matrix
                             </button>
                         )}
-                        {(user?.role_name === 'Admin') && (
+                        {(user?.role_name === 'Admin' || !!userSubPermissions.find(p => p.sub_module === 'Node Management')?.allowed) && (
                             <button 
                                 onClick={() => setActiveTab("cluster")}
                                 className={`tab-btn ${activeTab === 'cluster' ? 'active' : ''}`}
