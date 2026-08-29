@@ -22,17 +22,41 @@ services:
       - ./upload:/app/upload
 
   db:
-    image: postgres:15-alpine
+    image: bitnami/postgresql:15
     container_name: latuns_db
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=latuns
+      - POSTGRESQL_REPLICATION_MODE=${NODE_ROLE:-master}
+      - POSTGRESQL_REPLICATION_USER=repl_user
+      - POSTGRESQL_REPLICATION_PASSWORD=repl_password
+      - POSTGRESQL_USERNAME=postgres
+      - POSTGRESQL_PASSWORD=postgres
+      - POSTGRESQL_DATABASE=latuns
+      - POSTGRESQL_MASTER_HOST=${PEER_NODE_ADDRESS:-}
+      - POSTGRESQL_MASTER_PORT_NUMBER=5432
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/bitnami/postgresql
+
+  syncthing:
+    image: syncthing/syncthing:latest
+    container_name: latuns_syncthing
+    hostname: ${NODE_NAME:-latuns-node}
+    environment:
+      - PUID=1000
+      - PGID=1000
+    volumes:
+      - ./data:/var/syncthing/data
+      - ./upload:/var/syncthing/upload
+      - ./backups:/var/syncthing/backups
+      - ./syncthing-config:/var/syncthing/config
+    ports:
+      - "8384:8384" # Web UI
+      - "22000:22000/tcp" # TCP file transfers
+      - "22000:22000/udp" # QUIC file transfers
+      - "21027:21027/udp" # Receive local discovery broadcasts
+    restart: unless-stopped
 
 volumes:
   postgres_data:

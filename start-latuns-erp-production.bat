@@ -23,6 +23,9 @@ if not exist ".next" (
 )
 
 REM Start the Next.js production server
+echo Running database migrations...
+call npm run migrate
+
 echo Starting the production server...
 start "Latuns ERP Production Server" cmd /c "npm start"
 
