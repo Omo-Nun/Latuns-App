@@ -31,7 +31,7 @@ services:
       - POSTGRESQL_PASSWORD=postgres
       - POSTGRESQL_DATABASE=latuns
       - POSTGRESQL_MASTER_HOST=${PEER_NODE_ADDRESS:-}
-      - POSTGRESQL_MASTER_PORT_NUMBER=5432
+      - POSTGRESQL_MASTER_PORT_NUMBER=5433
     ports:
       - "5433:5432"
     volumes:
