@@ -40,6 +40,9 @@ next-env.d.ts
 /backups/
 /upload/
 
+# ===== Syncthing (machine-specific identity, must be unique per node) =====
+/syncthing-config/
+
 # ===== Local/scratch/workspace files =====
 /scratch/
 /My Suggestions/
