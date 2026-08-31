@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   erp:
     build: .
@@ -22,7 +20,7 @@ services:
       - ./upload:/app/upload
 
   db:
-    image: bitnami/postgresql:15
+    image: bitnami/postgresql:latest
     container_name: latuns_db
     restart: unless-stopped
     environment:
