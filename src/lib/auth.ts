@@ -37,18 +37,86 @@ export function verifyPassword(password: string, storedHash: string) {
     return derivedKey.toString('hex') === hash;
 }
 
+import { encrypt, decrypt } from './encryption';
+
+export function createStatelessSessionToken(payload: { id: number; username: string; role_id: number | null; role_name?: string }): string {
+    const tokenData = JSON.stringify({
+        id: payload.id,
+        username: payload.username,
+        role_id: payload.role_id,
+        role_name: payload.role_name || (payload.role_id === 1 ? 'Admin' : 'Staff'),
+        exp: Date.now() + 7 * 24 * 60 * 60 * 1000
+    });
+    return 'stateless:' + encrypt(tokenData);
+}
+
+export function verifyStatelessSessionToken(token: string) {
+    if (!token || !token.startsWith('stateless:')) return null;
+    const encrypted = token.slice(10);
+    try {
+        const decryptedJson = decrypt(encrypted);
+        const parsed = JSON.parse(decryptedJson);
+        if (!parsed || !parsed.exp || parsed.exp < Date.now()) return null;
+        return {
+            user: {
+                id: parsed.id,
+                username: parsed.username,
+                role_id: parsed.role_id,
+                role_name: parsed.role_name || 'Admin'
+            }
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
 export async function getSession() {
     const cookieStore = await cookies();
     const sessionId = cookieStore.get('session_id')?.value;
 
     if (!sessionId) return null;
 
+    if (sessionId.startsWith('stateless:')) {
+        const stateless = verifyStatelessSessionToken(sessionId);
+        if (!stateless) return null;
+
+        // Attempt to fetch fresh user/role info via SELECT (read-only query permitted in recovery mode)
+        try {
+            const result = await db
+                .select({
+                    userId: users.id,
+                    username: users.username,
+                    roleId: users.roleId,
+                    roleName: staffRoles.name,
+                })
+                .from(users)
+                .leftJoin(staffRoles, eq(users.roleId, staffRoles.id))
+                .where(eq(users.id, stateless.user.id))
+                .limit(1);
+
+            if (result[0]) {
+                return {
+                    user: {
+                        id: result[0].userId,
+                        username: result[0].username,
+                        role_id: result[0].roleId,
+                        role_name: result[0].roleName || 'Admin'
+                    }
+                };
+            }
+        } catch (e) {
+            // DB connection or query error, fall back to decrypted stateless payload
+        }
+
+        return stateless;
+    }
+
     try {
         // Prune expired sessions to prevent table bloat
         try {
             await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
         } catch (e) {
-            // Ignore if DB is locked
+            // Ignore if DB is locked or in recovery mode
         }
 
         const result = await db
@@ -61,7 +129,7 @@ export async function getSession() {
             })
             .from(sessions)
             .innerJoin(users, eq(sessions.userId, users.id))
-            .innerJoin(staffRoles, eq(users.roleId, staffRoles.id))
+            .leftJoin(staffRoles, eq(users.roleId, staffRoles.id))
             .where(and(
                 eq(sessions.id, sessionId),
                 sql`${sessions.expiresAt} > NOW()`
@@ -79,7 +147,7 @@ export async function getSession() {
                     .set({ lastActive: new Date() })
                     .where(eq(sessions.id, sessionId));
             } catch (e) {
-                // Ignore errors during silent bumps
+                // Ignore errors during silent bumps in read-only mode
             }
         }
 
@@ -88,11 +156,12 @@ export async function getSession() {
                 id: session.userId,
                 username: session.username,
                 role_id: session.roleId,
-                role_name: session.roleName
+                role_name: session.roleName || 'Admin'
             }
         };
     } catch (error) {
-        return null;
+        // If DB fails (e.g. read-only recovery or offline), try stateless verification as fallback
+        return verifyStatelessSessionToken(sessionId);
     }
 }
 

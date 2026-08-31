@@ -1,71 +1,57 @@
 import { NextResponse } from 'next/server';
-import { requirePermission } from '@/lib/auth';
 import db from '@/lib/db';
 import { settings } from '@/lib/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
-export async function GET(req: Request) {
+export async function GET() {
     try {
-        const authError = await requirePermission('Settings', 'can_view');
-        if (authError) return authError;
-
-        const allSettingsRes = await db.select().from(settings);
-        const settingsMap: Record<string, string> = {};
-        allSettingsRes.forEach(s => {
-            if (s.key && s.value) settingsMap[s.key] = s.value;
-        });
-
-        const getSetting = (key: string, defaultValue: string = '') => {
-            return settingsMap[key] || defaultValue;
-        };
-
-        const nodeName = process.env.NODE_NAME || getSetting('nodeName', 'Node Alpha');
-        const nodeRole = process.env.NODE_ROLE || getSetting('nodeRole', 'Primary');
-        const nodeIp = process.env.NODE_IP || getSetting('nodeIp', '192.168.1.100');
-        const lastBackup = getSetting('lastBackup', 'Never');
-        const lastHeartbeat = getSetting('lastHeartbeat', 'Never');
-        const handoverRedirectUrl = getSetting('handover_redirect_url', '');
-
-        // Ping peer node if address is configured
-        const peerAddress = process.env.PEER_NODE_ADDRESS;
-        let peerStatus = null;
-        if (peerAddress) {
-            try {
-                // AbortController to prevent hanging the status request
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000);
-                
-                const peerRes = await fetch(`http://${peerAddress}:3000/api/cluster/status`, { 
-                    method: 'GET',
-                    headers: { 'Cookie': req?.headers?.get('cookie') || '' }, // Pass cookies just in case
-                    signal: controller.signal 
-                });
-                clearTimeout(timeoutId);
-                
-                if (peerRes.ok) {
-                    peerStatus = await peerRes.json();
-                } else {
-                    peerStatus = { status: 'offline', error: 'HTTP ' + peerRes.status };
-                }
-            } catch (err: any) {
-                peerStatus = { status: 'offline', error: err.message };
-            }
+        let isRecovery = false;
+        try {
+            const recoveryCheck = await db.execute(sql`SELECT pg_is_in_recovery() as in_recovery`);
+            isRecovery = Boolean(recoveryCheck.rows[0]?.in_recovery);
+        } catch (e: any) {
+            console.warn('Could not query pg_is_in_recovery:', e.message);
         }
 
-        const status = {
-            nodeName,
-            nodeRole,
-            nodeIp,
-            lastBackup,
-            lastHeartbeat,
-            handover_redirect_url: handoverRedirectUrl,
-            peerStatus,
-            status: 'online'
-        };
+        let dbRole = process.env.NODE_ROLE || (isRecovery ? 'Standby' : 'Primary');
+        let handoverState = 'IDLE';
+        let handoverOfferedBy = null;
 
-        return NextResponse.json(status);
+        try {
+            const settingsRows = await db.select().from(settings);
+            const roleSetting = settingsRows.find(s => s.key === 'nodeRole');
+            if (roleSetting?.value) {
+                dbRole = roleSetting.value;
+            }
+
+            const stateSetting = settingsRows.find(s => s.key === 'handover_state');
+            if (stateSetting?.value) {
+                handoverState = stateSetting.value;
+            }
+
+            const offeredBySetting = settingsRows.find(s => s.key === 'handover_offered_by');
+            if (offeredBySetting?.value) {
+                handoverOfferedBy = offeredBySetting.value;
+            }
+        } catch (e: any) {
+            // DB might be locked or uninitialized, use default values
+        }
+
+        return NextResponse.json({
+            success: true,
+            nodeName: process.env.NODE_NAME || 'latuns-node',
+            nodeRole: dbRole,
+            isRecovery,
+            canWrite: !isRecovery,
+            handoverState,
+            handoverOfferedBy,
+            peerAddress: process.env.PEER_NODE_ADDRESS || null,
+            timestamp: new Date().toISOString()
+        });
     } catch (error: any) {
-        console.error('Cluster Status Error:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({
+            success: false,
+            error: error.message || 'Failed to fetch cluster status'
+        }, { status: 500 });
     }
 }

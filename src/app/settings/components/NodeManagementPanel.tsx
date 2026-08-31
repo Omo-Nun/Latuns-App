@@ -41,47 +41,73 @@ export default function NodeManagementPanel() {
         return () => clearInterval(interval);
     }, []);
 
-    const handleTakeOver = async () => {
-        if (!confirm("Are you sure you want this node to take over as Primary? This will trigger a safety backup and switch roles.")) return;
+    const handleOfferHandover = async () => {
+        if (!confirm("Offer Primary Master role to peer nodes? This will create a safety backup and allow Node B to click [Accept & Become Master].")) return;
         setActionLoading(true);
         try {
             const res = await fetch('/api/cluster/handover', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nodeId: nodeStatus?.nodeName, forceStandby: false })
+                body: JSON.stringify({ action: 'offer' })
             });
             const data = await res.json();
             if (data.success) {
-                toast.success("Role handover completed successfully!");
+                toast.success("Master role offered successfully!");
                 fetchStatus();
             } else {
-                toast.error(data.error || "Failed to handover role.");
+                toast.error(data.error || "Failed to offer role.");
             }
         } catch (err: any) {
-            toast.error("Network error during handover.");
+            toast.error("Network error during handover offer.");
         } finally {
             setActionLoading(false);
         }
     };
 
-    const handleOverride = async (forceStandby: boolean) => {
-        if (!confirm(`Are you sure you want to FORCE this node to become ${forceStandby ? 'Standby' : 'Primary'}? Use this only to resolve split-brain conflicts.`)) return;
+    const handleCancelOffer = async () => {
         setActionLoading(true);
         try {
             const res = await fetch('/api/cluster/handover', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nodeId: nodeStatus?.nodeName, forceStandby, redirectUrl: null })
+                body: JSON.stringify({ action: 'cancel' })
             });
             const data = await res.json();
             if (data.success) {
-                toast.success(`Node successfully forced to ${forceStandby ? 'Standby' : 'Primary'}.`);
+                toast.success("Handover offer cancelled.");
                 fetchStatus();
             } else {
-                toast.error(data.error || "Failed to override role.");
+                toast.error(data.error || "Failed to cancel offer.");
             }
         } catch (err: any) {
-            toast.error("Network error during override.");
+            toast.error("Network error during cancellation.");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleTakeOver = async (force: boolean = false) => {
+        const msg = force 
+            ? "EMERGENCY FORCEFUL TAKEOVER: Are you sure Machine A is unavailable/offline? This will immediately issue pg_promote() on this node."
+            : "Are you sure you want to promote this node to Primary Master?";
+        if (!confirm(msg)) return;
+        setActionLoading(true);
+        try {
+            const res = await fetch('/api/cluster/handover', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: force ? 'force' : 'accept' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success(data.message || "Node successfully promoted!");
+                fetchStatus();
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                toast.error(data.error || "Failed to execute handover.");
+            }
+        } catch (err: any) {
+            toast.error("Network error during handover.");
         } finally {
             setActionLoading(false);
         }
@@ -155,31 +181,53 @@ export default function NodeManagementPanel() {
                             </span>
                         </div>
                         <div className="text-sm mb-4 text-gray-600 flex flex-col gap-1 mt-3">
-                            <p className="flex justify-between border-b pb-1"><span>IP Address:</span> <strong>{nodeStatus?.nodeIp}</strong></p>
-                            <p className="flex justify-between border-b pb-1"><span>Last Backup:</span> <strong className="flex items-center gap-1"><Clock size={12}/> {nodeStatus?.lastBackup !== 'Never' ? new Date(nodeStatus?.lastBackup).toLocaleString() : 'Never'}</strong></p>
+                            <p className="flex justify-between border-b pb-1"><span>Database Status:</span> <strong>{nodeStatus?.isRecovery ? 'Standby (Recovery / Read-Only)' : 'Primary (Read/Write Active)'}</strong></p>
+                            <p className="flex justify-between border-b pb-1"><span>Handover Status:</span> <strong>{nodeStatus?.handoverState || 'IDLE'}</strong></p>
                         </div>
                         
-                        {nodeStatus?.nodeRole !== 'Primary' && (
+                        {/* Primary Node Actions */}
+                        {nodeStatus?.nodeRole === 'Primary' && nodeStatus?.handoverState !== 'OFFERED' && (
                             <button 
-                                onClick={handleTakeOver}
+                                onClick={handleOfferHandover}
                                 disabled={actionLoading}
-                                className="w-full flex items-center justify-center gap-2 text-sm py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-md transition-colors mb-2"
+                                className="w-full flex items-center justify-center gap-2 text-sm py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md transition-colors mb-2"
                             >
                                 {actionLoading ? <RefreshCw className="animate-spin" size={14} /> : <RefreshCw size={14} />}
-                                [Take Over as Primary]
+                                [Initiate Master Handover]
                             </button>
                         )}
-                        {nodeStatus?.nodeRole === 'Primary' && (
-                            <div className="text-center p-2 text-sm font-bold flex items-center justify-center gap-2 text-blue-600 bg-blue-50 rounded-md mb-2">
-                                <Activity size={16} /> Active Write Node
+
+                        {nodeStatus?.nodeRole === 'Primary' && nodeStatus?.handoverState === 'OFFERED' && (
+                            <div className="mb-2 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800 flex flex-col gap-2">
+                                <p className="font-semibold">Handover offered to peer nodes. Waiting for Node B to accept...</p>
+                                <button 
+                                    onClick={handleCancelOffer}
+                                    disabled={actionLoading}
+                                    className="w-full py-1.5 bg-amber-200 hover:bg-amber-300 text-amber-900 font-bold rounded transition-colors"
+                                >
+                                    Cancel Handover Offer
+                                </button>
                             </div>
                         )}
+
+                        {/* Standby Node Actions */}
+                        {nodeStatus?.nodeRole !== 'Primary' && (
+                            <button 
+                                onClick={() => handleTakeOver(false)}
+                                disabled={actionLoading}
+                                className="w-full flex items-center justify-center gap-2 text-sm py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-md transition-colors mb-2"
+                            >
+                                {actionLoading ? <RefreshCw className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                                [Take Over as Primary Master]
+                            </button>
+                        )}
+
                         <button 
-                            onClick={() => handleOverride(nodeStatus?.nodeRole === 'Primary')}
+                            onClick={() => handleTakeOver(true)}
                             disabled={actionLoading}
                             className="w-full flex items-center justify-center gap-2 text-xs py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md transition-colors"
                         >
-                            <AlertTriangle size={12} /> Force {nodeStatus?.nodeRole === 'Primary' ? 'Standby' : 'Primary'} (Override)
+                            <AlertTriangle size={12} /> Forceful Emergency Takeover
                         </button>
                     </div>
 

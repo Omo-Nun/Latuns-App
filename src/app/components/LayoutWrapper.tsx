@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import ToastContainer from "@/components/Toast";
+import HandoverModal from "@/components/cluster/HandoverModal";
 import { Server, ArrowRight } from "lucide-react";
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
@@ -92,6 +93,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             <main className="main-content">
                 {children}
             </main>
+            <HandoverModal />
             <ToastContainer />
         </div>
     );

@@ -5,7 +5,7 @@ import { users, sessions } from '@/lib/schema';
 import { logAudit } from '@/lib/audit';
 import { eq, sql } from 'drizzle-orm';
 import crypto from 'crypto';
-import { hashPassword, verifyPassword } from '@/lib/auth';
+import { hashPassword, verifyPassword, createStatelessSessionToken } from '@/lib/auth';
 
 const rateLimit = new Map<string, { count: number, resetTime: number }>();
 
@@ -54,39 +54,60 @@ export async function POST(request: Request) {
         // Reset rate limit on success
         rateLimit.delete(ip);
 
-        // Upgrade hash if it's legacy
+        // Upgrade hash if it's legacy (ignore error if DB is in read-only standby mode)
         if (!user.passwordHash.startsWith('scrypt:')) {
-            const newHash = hashPassword(password);
-            await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, user.id));
+            try {
+                const newHash = hashPassword(password);
+                await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, user.id));
+            } catch (e) {
+                // Ignore hash upgrade failure on standby nodes
+            }
         }
 
         // Create session
-        const sessionId = crypto.randomBytes(32).toString('hex');
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-        const userAgent = request.headers.get('user-agent') || 'Unknown';
-        const now = new Date();
+        let finalSessionId: string;
+        const cookieStore = await cookies();
 
-        await db.insert(sessions).values({
-            id: sessionId,
-            userId: user.id,
-            expiresAt,
-            ipAddress: ip,
-            userAgent,
-            lastActive: now,
-        });
+        try {
+            const sessionId = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+            const userAgent = request.headers.get('user-agent') || 'Unknown';
+            const now = new Date();
+
+            await db.insert(sessions).values({
+                id: sessionId,
+                userId: user.id,
+                expiresAt,
+                ipAddress: ip,
+                userAgent,
+                lastActive: now,
+            });
+
+            try {
+                await logAudit(user.id, user.username, 'Login', 'Auth', 'User logged in successfully');
+            } catch (e) {
+                // Ignore audit log error if DB write fails
+            }
+
+            finalSessionId = sessionId;
+        } catch (dbWriteError: any) {
+            console.warn('DB session write failed (Standby Read-Only mode detected). Falling back to stateless encrypted session cookie.', dbWriteError.message);
+            finalSessionId = createStatelessSessionToken({
+                id: user.id,
+                username: user.username,
+                role_id: user.roleId,
+                role_name: user.roleId === 1 ? 'Admin' : 'Staff'
+            });
+        }
 
         // Set cookie
-        const cookieStore = await cookies();
-        cookieStore.set('session_id', sessionId, {
+        cookieStore.set('session_id', finalSessionId, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production' && request.url.startsWith('https://'),
             sameSite: 'lax',
             path: '/',
             maxAge: 7 * 24 * 60 * 60, // 7 days
         });
-
-        // Audit log
-        await logAudit(user.id, user.username, 'Login', 'Auth', 'User logged in successfully');
 
         return NextResponse.json({ success: true, user: { id: user.id, username: user.username, role_id: user.roleId } });
     } catch (error: any) {
