@@ -256,12 +256,12 @@ export default function NodeManagementPanel() {
                             </span>
                         </div>
                         <div className="text-sm mb-4 text-gray-600 flex flex-col gap-1 mt-3">
-                            <p className="flex justify-between border-b pb-1"><span>IP/Hostname:</span> <strong>{process.env.NEXT_PUBLIC_PEER_NODE_ADDRESS || 'Not Configured'}</strong></p>
+                            <p className="flex justify-between border-b pb-1"><span>IP/Hostname:</span> <strong>{nodeStatus?.peerAddress || process.env.NEXT_PUBLIC_PEER_NODE_ADDRESS || 'Not Configured'}</strong></p>
                             {nodeStatus?.peerStatus && nodeStatus.peerStatus.status === 'online' && (
                                 <p className="flex justify-between border-b pb-1"><span>Last Backup:</span> <strong className="flex items-center gap-1"><Clock size={12}/> {nodeStatus.peerStatus.lastBackup !== 'Never' ? new Date(nodeStatus.peerStatus.lastBackup).toLocaleString() : 'Never'}</strong></p>
                             )}
                         </div>
-                        {!process.env.NEXT_PUBLIC_PEER_NODE_ADDRESS && (
+                        {(!nodeStatus?.peerAddress && !process.env.NEXT_PUBLIC_PEER_NODE_ADDRESS) && (
                             <div className="text-xs text-gray-500 italic mt-4 text-center">
                                 Configure PEER_NODE_ADDRESS in .env
                             </div>

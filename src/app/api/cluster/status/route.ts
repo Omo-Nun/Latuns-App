@@ -37,6 +37,10 @@ export async function GET() {
             // DB might be locked or uninitialized, use default values
         }
 
+        if (dbRole.toLowerCase() === 'master') {
+            dbRole = 'Primary';
+        }
+
         return NextResponse.json({
             success: true,
             nodeName: process.env.NODE_NAME || 'latuns-node',

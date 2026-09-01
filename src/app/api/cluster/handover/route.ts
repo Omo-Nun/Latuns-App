@@ -72,7 +72,24 @@ export async function POST(req: Request) {
             try {
                 // Execute engine promotion query in PostgreSQL
                 await db.execute(sql`SELECT pg_promote(wait => true);`);
-                console.log(`pg_promote() executed successfully. Database exited recovery mode.`);
+                console.log(`pg_promote() executed successfully. Waiting for database to exit recovery mode...`);
+
+                let isRecovery = true;
+                let attempts = 0;
+                while (isRecovery && attempts < 10) {
+                    const check = await db.execute(sql`SELECT pg_is_in_recovery() as in_recovery`);
+                    isRecovery = Boolean(check.rows[0]?.in_recovery);
+                    if (isRecovery) {
+                        await new Promise(res => setTimeout(res, 1000));
+                        attempts++;
+                    }
+                }
+                
+                if (isRecovery) {
+                    console.warn(`Database is still in recovery mode after 10 seconds.`);
+                } else {
+                    console.log(`Database exited recovery mode successfully.`);
+                }
             } catch (promoteErr: any) {
                 console.warn(`pg_promote error (may already be primary or not in standby):`, promoteErr.message);
             }
@@ -92,6 +109,21 @@ export async function POST(req: Request) {
 
             await db.execute(sql`DELETE FROM settings WHERE key = 'handover_offered_by'`);
             await db.execute(sql`DELETE FROM settings WHERE key = 'handover_redirect_url'`);
+
+            // Trigger demotion on the peer node if possible
+            if (process.env.PEER_NODE_ADDRESS) {
+                try {
+                    const peerUrl = `http://${process.env.PEER_NODE_ADDRESS}:3000/api/cluster/demote`;
+                    console.log(`Notifying peer node to demote itself at ${peerUrl}...`);
+                    fetch(peerUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'demote' })
+                    }).catch(e => console.warn(`Failed to notify peer node for demotion: ${e.message}`));
+                } catch (e: any) {
+                    console.warn(`Error dispatching demote signal: ${e.message}`);
+                }
+            }
 
             return NextResponse.json({
                 success: true,
