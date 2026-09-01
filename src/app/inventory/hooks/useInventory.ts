@@ -16,8 +16,13 @@ export function useInventory() {
         setLoading(true);
         try {
             const res = await fetch("/api/inventory");
+            if (!res.ok) {
+                // Don't overwrite state with error objects (causes .reduce crashes)
+                console.error("Failed to fetch inventory:", res.status);
+                return;
+            }
             const data = await res.json();
-            setItems(data);
+            setItems(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error("Failed to fetch inventory", error);
             toast.error("Failed to fetch inventory");

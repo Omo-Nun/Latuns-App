@@ -12,11 +12,16 @@ export async function POST() {
         const cookieStore = await cookies();
         const sessionId = cookieStore.get('session_id')?.value;
 
-        if (sessionId) {
-            if (session) {
-                await logAudit(session.user.id, session.user.username, 'Logout', 'Auth', 'User logged out');
+        try {
+            if (sessionId) {
+                if (session) {
+                    await logAudit(session.user.id, session.user.username, 'Logout', 'Auth', 'User logged out');
+                }
+                await db.delete(sessions).where(eq(sessions.id, sessionId));
             }
-            await db.delete(sessions).where(eq(sessions.id, sessionId));
+        } catch (dbError) {
+            // Ignore DB errors (e.g. read-only replica) and proceed to delete the cookie
+            console.error('Logout DB Error (ignoring):', dbError);
         }
 
         cookieStore.delete('session_id');

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
@@ -23,6 +23,7 @@ export default function Sidebar() {
     const [loading, setLoading] = useState(true);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     const [showCollapsedActions, setShowCollapsedActions] = useState(false);
+    const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
         const savedTheme = localStorage.getItem('theme');
@@ -43,13 +44,22 @@ export default function Sidebar() {
         fetchUnreadMail();
         fetchNotifications();
         
-        const interval = setInterval(() => {
+        pollingIntervalRef.current = setInterval(() => {
             fetchPendingCount();
             fetchUnreadMail();
             fetchNotifications();
         }, 60000);
-        return () => clearInterval(interval);
+        return () => {
+            if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+        };
     }, []);
+
+    const stopPolling = () => {
+        if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+        }
+    };
 
     const fetchSession = async () => {
         try {
@@ -59,9 +69,13 @@ export default function Sidebar() {
                 setUser(data.user);
                 setPermissions(data.permissions);
             } else if (res.status === 401 && pathname !== '/login') {
+                stopPolling();
                 router.push('/login');
             }
-        } catch { /* silent */ } finally {
+        } catch {
+            // Network error (e.g. ERR_EMPTY_RESPONSE during demotion) — stop polling
+            stopPolling();
+        } finally {
             setLoading(false);
         }
     };
@@ -126,15 +140,17 @@ export default function Sidebar() {
 
     const confirmLogout = async () => {
         setShowLogoutConfirm(false);
+        stopPolling();
         try {
-            const res = await fetch('/api/auth/logout', { method: 'POST' });
-            if (res.ok) {
-                router.push('/login');
-                router.refresh();
-            }
+            await fetch('/api/auth/logout', { method: 'POST' });
         } catch {
-            alert("Logout failed");
+            // Network or server error — proceed to login anyway
         }
+        // Always navigate to login, even if the server-side session delete failed.
+        // The server-side cookie deletion is best-effort; the critical action is
+        // getting the user to the login page so they can re-authenticate.
+        router.push('/login');
+        router.refresh();
     };
 
     const toggleTheme = () => {

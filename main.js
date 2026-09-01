@@ -1,5 +1,5 @@
 const { app, BrowserWindow, dialog } = require('electron');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const waitOn = require('wait-on');
@@ -32,12 +32,20 @@ async function createWindow() {
         console.log('Starting Docker cluster...');
         
         // Start Docker
-        exec('docker-compose up -d --build', { cwd: rootDir }, (err, stdout, stderr) => {
-            if (err) {
-                console.error(`Error starting Docker: ${err.message}`);
+        const dockerProcess = spawn('docker-compose', ['up', '-d', '--build'], { cwd: rootDir, shell: true });
+        
+        dockerProcess.stdout.on('data', (data) => {
+            process.stdout.write(data);
+        });
+
+        dockerProcess.stderr.on('data', (data) => {
+            process.stderr.write(data);
+        });
+
+        dockerProcess.on('close', (code) => {
+            if (code !== 0) {
+                console.error(`Error starting Docker: process exited with code ${code}`);
                 dialog.showErrorBox('Docker Error', 'Failed to start Docker containers. Make sure Docker Desktop is running.');
-            } else {
-                console.log(stdout);
             }
         });
 
