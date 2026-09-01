@@ -37,7 +37,12 @@ export async function GET() {
             // DB might be locked or uninitialized, use default values
         }
 
-        if (dbRole.toLowerCase() === 'master') {
+        // PostgreSQL recovery state is the ground truth for role detection.
+        // If the engine is in recovery mode, this node is definitively a Standby,
+        // regardless of any stale 'nodeRole' setting left from a previous role.
+        if (isRecovery) {
+            dbRole = 'Standby';
+        } else if (dbRole.toLowerCase() === 'master') {
             dbRole = 'Primary';
         }
 
