@@ -1,6 +1,6 @@
 #!/bin/sh
-echo "Running database migrations..."
-node scripts/migrate.js
+echo "Skipping database migrations (run externally)..."
+# node scripts/migrate.js
 
 echo "Starting Latuns ERP Daemon..."
 node scripts/heartbeat.js &
