@@ -65,6 +65,24 @@ export async function GET() {
         const peerAddress = process.env.PEER_NODE_ADDRESS || process.env.NEXT_PUBLIC_PEER_NODE_ADDRESS || null;
         const cleanPeerHost = peerAddress ? peerAddress.replace(/^https?:\/\//, '').split('/')[0] : null;
 
+        // If this node is in Standby mode and local handoverState is IDLE, poll the Primary peer node to see if it offered handover
+        if (dbRole === 'Standby' && cleanPeerHost && handoverState !== 'OFFERED') {
+            try {
+                const peerRes = await fetch(`http://${cleanPeerHost}:3000/api/cluster/status`, {
+                    signal: AbortSignal.timeout(1500)
+                });
+                if (peerRes.ok) {
+                    const peerData = await peerRes.json();
+                    if (peerData.handoverState === 'OFFERED') {
+                        handoverState = 'OFFERED';
+                        handoverOfferedBy = peerData.handoverOfferedBy || peerData.nodeName || 'Primary Master';
+                    }
+                }
+            } catch (peerErr) {
+                // Peer unreachable or busy, ignore
+            }
+        }
+
         return NextResponse.json({
             success: true,
             nodeName: process.env.NODE_NAME || 'latuns-node',
@@ -73,6 +91,7 @@ export async function GET() {
             isDbConnected,
             canWrite: dbRole === 'Primary' && !isRecovery,
             handoverState,
+            handoverOfferedBy,
             handover_redirect_url: handoverRedirectUrl || null,
             peerAddress: cleanPeerHost,
             timestamp: new Date().toISOString()
