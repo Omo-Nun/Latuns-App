@@ -33,10 +33,14 @@ services:
       - POSTGRESQL_DATABASE=latuns
       - POSTGRESQL_MASTER_HOST=${PEER_NODE_ADDRESS:-}
       - POSTGRESQL_MASTER_PORT_NUMBER=5433
+    extra_hosts:
+      - "latuns-pc2:${PEER_NODE_ADDRESS:-127.0.0.1}"
+      - "latuns-pc1:host-gateway"
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/bitnami/postgresql
+      - ./pg_hba.conf:/opt/bitnami/postgresql/conf/pg_hba.conf:ro
 
   syncthing:
     image: syncthing/syncthing:latest
