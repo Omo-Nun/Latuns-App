@@ -9,14 +9,16 @@ import { hashPassword, verifyPassword, createStatelessSessionToken } from '@/lib
 
 const rateLimit = new Map<string, { count: number, resetTime: number }>();
 
-function checkRateLimit(ip: string): boolean {
+function checkRateLimit(ip: string, username: string): boolean {
     const now = Date.now();
-    const limit = rateLimit.get(ip);
+    // Key by username so one bad actor doesn't lock out everyone sharing the Docker gateway IP
+    const key = `${ip}:${username.toLowerCase().trim()}`;
+    const limit = rateLimit.get(key);
     if (limit && limit.resetTime > now) {
         if (limit.count >= 5) return false;
         limit.count++;
     } else {
-        rateLimit.set(ip, { count: 1, resetTime: now + 15 * 60 * 1000 });
+        rateLimit.set(key, { count: 1, resetTime: now + 15 * 60 * 1000 });
     }
     return true;
 }
@@ -24,15 +26,14 @@ function checkRateLimit(ip: string): boolean {
 export async function POST(request: Request) {
     try {
         const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
-        
-        if (!checkRateLimit(ip)) {
-            return NextResponse.json({ error: 'Too many failed login attempts. Please try again in 15 minutes.' }, { status: 429 });
-        }
-
         const { username, password } = await request.json();
 
         if (!username || !password) {
             return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
+        }
+        
+        if (!checkRateLimit(ip, username)) {
+            return NextResponse.json({ error: 'Too many failed login attempts. Please try again in 15 minutes.' }, { status: 429 });
         }
 
         if (password.length < 4) {
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
         }
         
         // Reset rate limit on success
-        rateLimit.delete(ip);
+        rateLimit.delete(`${ip}:${(username || '').toLowerCase().trim()}`);
 
         // Upgrade hash if it's legacy (ignore error if DB is in read-only standby mode)
         if (!user.passwordHash.startsWith('scrypt:')) {

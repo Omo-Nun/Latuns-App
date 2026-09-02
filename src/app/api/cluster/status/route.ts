@@ -74,7 +74,7 @@ export async function GET() {
             canWrite: dbRole === 'Primary' && !isRecovery,
             handoverState,
             handoverOfferedBy,
-            handover_redirect_url: handoverRedirectUrl || (dbRole === 'Standby' && cleanPeerHost ? `http://${cleanPeerHost}` : null),
+            handover_redirect_url: handoverRedirectUrl || (dbRole === 'Standby' && cleanPeerHost ? `http://${cleanPeerHost}:3000` : null),
             peerAddress: cleanPeerHost,
             timestamp: new Date().toISOString()
         });

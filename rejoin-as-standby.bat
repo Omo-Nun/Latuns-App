@@ -4,8 +4,8 @@ echo ========================================================
 echo   LATUNS ERP - AUTOMATED STANDBY NODE RE-INITIALIZATION
 echo ========================================================
 echo.
-echo This script will reset local database replica data and
-echo configure this machine to stream updates from the Primary Master.
+echo This script will reconfigure this machine to stream
+echo updates from the Primary Master.
 echo.
 
 echo Reading PEER_NODE_ADDRESS from .env...
@@ -13,6 +13,7 @@ for /f "usebackq tokens=1,* delims==" %%a in (`findstr /B /I "PEER_NODE_ADDRESS=
 
 if "%RAW_PEER%"=="" (
     echo Error: PEER_NODE_ADDRESS is missing in .env. Cannot determine Primary Node IP.
+    pause
     exit /b 1
 )
 
@@ -21,18 +22,23 @@ for /f %%i in ('powershell -Command "$h = '%RAW_PEER%'.Trim('\"'' ').Replace('ht
 
 echo Cleaned Primary Host IP: %CLEAN_PEER%
 
-echo Updating .env to persist Standby Role and clean PEER_NODE_ADDRESS...
-powershell -Command "(Get-Content .env) -replace '^NODE_ROLE=.*', 'NODE_ROLE=\"slave\"' | Set-Content .env"
+echo Updating .env to persist Standby role...
+powershell -Command "(Get-Content .env) -replace '^NODE_ROLE=.*', 'NODE_ROLE=""slave""' | Set-Content .env"
 
-echo Stopping current local containers...
-docker-compose down -v
+echo Stopping current local containers (preserving data volume)...
+docker-compose down
 
-echo Starting node in Standby Replica Mode pointing to %PEER_IP%...
+echo Starting node in Standby Replica Mode pointing to %CLEAN_PEER%...
 docker-compose up -d
+
+echo Waiting for local ERP to become available...
+timeout /t 20 /nobreak >nul
 
 echo.
 echo ========================================================
 echo Standby Node successfully initialized!
-echo Streaming replication will synchronize from %PEER_IP%:5433.
+echo Streaming replication will synchronize from %CLEAN_PEER%:5433.
+echo You can now close this window and use the app.
 echo ========================================================
 echo.
+pause

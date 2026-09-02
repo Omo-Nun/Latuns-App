@@ -107,14 +107,35 @@ function startDemotionWatcher() {
                 dialog.showMessageBox({
                     type: 'warning',
                     title: 'Cluster Handover Alert',
-                    message: 'A peer node has taken over as Primary Master.\nThis node will now automatically rejoin as a Standby Replica.'
+                    message: 'A peer node has taken over as Primary Master.\nThis node will now rejoin as a Standby Replica and reload automatically.'
                 });
+
+                // Load a "reconnecting" screen while the rejoin script runs
+                mainWindow.loadFile('loading.html').catch(() => {});
 
                 exec(`start cmd.exe /K "${rejoinScript}"`, (error) => {
                     if (error) {
                         console.error(`Error executing rejoin script: ${error}`);
                     }
                 });
+
+                // Poll localhost:3000 until the standby node is back up, then reload the window
+                console.log('Waiting for local standby node to come back online at http://localhost:3000...');
+                waitOn({
+                    resources: ['http-get://localhost:3000'],
+                    delay: 5000,   // give docker-compose down+up time to start
+                    interval: 2000,
+                    timeout: 180000, // 3 min max
+                    window: 1000,
+                }).then(() => {
+                    console.log('Standby node is back online. Reloading window...');
+                    mainWindow.loadURL('http://localhost:3000');
+                    mainWindow.setTitle('Latuns ERP (Standby)');
+                }).catch((err) => {
+                    console.error('Standby node did not come back in time:', err);
+                    dialog.showErrorBox('Rejoin Failed', 'The local ERP node did not restart in time. Please run start-node.bat manually.');
+                });
+
             } catch (err) {
                 console.error('Error processing demote signal:', err);
             }
