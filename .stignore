@@ -1,0 +1,17 @@
+// Syncthing ignore patterns for Latuns ERP
+// These files are machine-specific and must NOT be synced between nodes
+
+// Environment config - each node has different NODE_ROLE, NODE_NAME, PEER_NODE_ADDRESS
+.env
+
+// Node.js dependencies - rebuilt per machine
+node_modules
+
+// Next.js build cache - rebuilt per machine
+.next
+
+// Electron build output
+dist
+
+// Local logs
+*.log

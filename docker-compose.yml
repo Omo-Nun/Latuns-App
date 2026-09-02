@@ -40,7 +40,6 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/bitnami/postgresql
-      - ./pg_hba.conf:/opt/bitnami/postgresql/conf/pg_hba.conf:ro
 
   syncthing:
     image: syncthing/syncthing:latest
