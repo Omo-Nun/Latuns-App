@@ -25,6 +25,7 @@ services:
     restart: unless-stopped
     environment:
       - POSTGRESQL_REPLICATION_MODE=${NODE_ROLE:-master}
+      - POSTGRESQL_PGHBA_REMOVE_FILTERS=yes
       - POSTGRESQL_REPLICATION_USER=repl_user
       - POSTGRESQL_REPLICATION_PASSWORD=repl_password
       - POSTGRESQL_USERNAME=postgres

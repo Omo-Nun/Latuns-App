@@ -30,14 +30,15 @@ setInterval(() => {
             // Execute the batch script
             const batPath = path.join(__dirname, '..', 'rejoin-as-standby.bat');
             
-            // Since rejoin-as-standby.bat asks for user input (PEER_IP), we need to handle it or modify it.
-            // For full automation, we can pass it, but standard exec is fine for now if we modify the bat file
-            // Let's just launch it in a new window so the user sees it and can enter the IP if needed
-            exec(`start cmd.exe /K "${batPath}"`, (error) => {
+            // Execute the batch script silently in the background
+            // We removed the manual prompt in the bat file, so it's fully automated now
+            exec(`"${batPath}"`, (error, stdout, stderr) => {
                 if (error) {
-                    console.error(`Error executing script: ${error}`);
+                    console.error(`Error executing demotion script: ${error}`);
+                    if (stderr) console.error(`Stderr: ${stderr}`);
                 } else {
-                    console.log('Rejoin script launched successfully in a new window.');
+                    console.log('Demotion and rejoin completed successfully in the background.');
+                    console.log(stdout);
                 }
             });
             

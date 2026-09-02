@@ -18,6 +18,17 @@ export async function POST(req: Request) {
 
         if (action === 'offer') {
             // Node A offers/yields the Master role
+            // [DATA INTEGRITY LOCK]: Enforce database-level read-only mode to prevent write race conditions
+            // during the handover window before this node is fully demoted.
+            await db.execute(sql`ALTER DATABASE latuns SET default_transaction_read_only = on;`);
+            
+            // Terminate existing connections (except this one) to force them to reconnect in read-only mode
+            try {
+                await db.execute(sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'latuns' AND pid <> pg_backend_pid();`);
+            } catch (e) {
+                console.warn('Could not terminate other backends:', e);
+            }
+
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const backupFileName = `erp_handover_safety_${timestamp}.dump`;
             const backupDir = path.join(process.cwd(), 'backups');
@@ -45,12 +56,22 @@ export async function POST(req: Request) {
 
             return NextResponse.json({
                 success: true,
-                message: `Master role offered to peer nodes. Safety backup created at ${backupFileName}.`,
+                message: `Master role offered to peer nodes. Database is locked (Read-Only) to prevent conflicts. Safety backup created at ${backupFileName}.`,
                 handoverState: 'OFFERED'
             });
         }
 
         if (action === 'cancel') {
+            // Remove the read-only lock
+            await db.execute(sql`ALTER DATABASE latuns SET default_transaction_read_only = off;`);
+            
+            // Terminate existing connections to force them to reconnect in read-write mode
+            try {
+                await db.execute(sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'latuns' AND pid <> pg_backend_pid();`);
+            } catch (e) {
+                console.warn('Could not terminate other backends:', e);
+            }
+
             await db.execute(sql`
                 INSERT INTO settings (key, value) 
                 VALUES ('handover_state', 'IDLE') 
@@ -60,7 +81,7 @@ export async function POST(req: Request) {
 
             return NextResponse.json({
                 success: true,
-                message: 'Handover offer cancelled.',
+                message: 'Handover offer cancelled. Database unlocked (Read/Write restored).',
                 handoverState: 'IDLE'
             });
         }
