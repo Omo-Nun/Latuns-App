@@ -18,7 +18,7 @@ async function testAuth() {
 
     try {
         const username = 'admin';
-        const password = 'admin123';
+        const password = 'admin';
 
         console.log(`Looking up user: ${username}`);
         const result = await db.select().from(schema.users)

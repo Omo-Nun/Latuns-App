@@ -118,6 +118,10 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Database connection failed. Ensure the database is running.' }, { status: 500 });
         }
         
+        if (error.cause?.code === '42P01' || error.message?.includes('does not exist')) {
+            return NextResponse.json({ error: 'Database schema uninitialized. Database migrations are required.' }, { status: 500 });
+        }
+        
         return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
     }
 }

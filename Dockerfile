@@ -26,8 +26,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Copy scripts and entrypoint
+# Copy scripts, migrations, and entrypoint
 COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/start.sh ./
 RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 EXPOSE 3000
