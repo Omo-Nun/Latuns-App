@@ -32,7 +32,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             }
         };
 
-        const interval = setInterval(checkStatus, 10000);
+        const interval = setInterval(checkStatus, 5000);
         checkStatus(); // Check immediately on mount
         return () => clearInterval(interval);
     }, [isLoginPage]);

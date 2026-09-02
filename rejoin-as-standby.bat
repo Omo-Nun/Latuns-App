@@ -9,14 +9,19 @@ echo configure this machine to stream updates from the Primary Master.
 echo.
 
 echo Reading PEER_NODE_ADDRESS from .env...
-for /f "tokens=2 delims==" %%a in ('findstr /B /I "PEER_NODE_ADDRESS=" .env') do set PEER_IP=%%~a
+for /f "usebackq tokens=1,* delims==" %%a in (`findstr /B /I "PEER_NODE_ADDRESS=" .env`) do set RAW_PEER=%%b
 
-if "%PEER_IP%"=="" (
+if "%RAW_PEER%"=="" (
     echo Error: PEER_NODE_ADDRESS is missing in .env. Cannot determine Primary Node IP.
     exit /b 1
 )
 
-echo Updating .env to persist Standby Role...
+REM Strip quotes, http, https, and trailing port using PowerShell
+for /f %%i in ('powershell -Command "$h = '%RAW_PEER%'.Trim('\"'' ').Replace('http://','').Replace('https://','').Split(':')[0]; if ($h) { $h } else { 'localhost' }"') do set CLEAN_PEER=%%i
+
+echo Cleaned Primary Host IP: %CLEAN_PEER%
+
+echo Updating .env to persist Standby Role and clean PEER_NODE_ADDRESS...
 powershell -Command "(Get-Content .env) -replace '^NODE_ROLE=.*', 'NODE_ROLE=\"slave\"' | Set-Content .env"
 
 echo Stopping current local containers...

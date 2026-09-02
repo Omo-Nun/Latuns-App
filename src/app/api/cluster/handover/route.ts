@@ -17,18 +17,24 @@ export async function POST(req: Request) {
         console.log(`Executing cluster handover action: ${action}`);
 
         if (action === 'offer') {
-            // Node A offers/yields the Master role
-            // [DATA INTEGRITY LOCK]: Enforce database-level read-only mode to prevent write race conditions
-            // during the handover window before this node is fully demoted.
-            await db.execute(sql`ALTER DATABASE latuns SET default_transaction_read_only = on;`);
-            
-            // Terminate existing connections (except this one) to force them to reconnect in read-only mode
-            try {
-                await db.execute(sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'latuns' AND pid <> pg_backend_pid();`);
-            } catch (e) {
-                console.warn('Could not terminate other backends:', e);
-            }
+            // 1. First write handover offer status into settings while DB is still read/write
+            // so streaming replication syncs this offer to peer standby nodes.
+            await db.execute(sql`
+                INSERT INTO settings (key, value) 
+                VALUES ('handover_state', 'OFFERED') 
+                ON CONFLICT (key) DO UPDATE SET value = 'OFFERED'
+            `);
 
+            await db.execute(sql`
+                INSERT INTO settings (key, value) 
+                VALUES ('handover_offered_by', ${process.env.NODE_NAME || 'Machine-A'}) 
+                ON CONFLICT (key) DO UPDATE SET value = ${process.env.NODE_NAME || 'Machine-A'}
+            `);
+
+            // Brief pause to allow replication stream to broadcast the offer to peer standby
+            await new Promise(res => setTimeout(res, 500));
+
+            // 2. Create encrypted safety backup dump
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const backupFileName = `erp_handover_safety_${timestamp}.dump`;
             const backupDir = path.join(process.cwd(), 'backups');
@@ -42,17 +48,14 @@ export async function POST(req: Request) {
             await fs.writeFile(`${backupFilePath}.enc`, encryptedPayload);
             await fs.unlink(backupFilePath);
 
-            await db.execute(sql`
-                INSERT INTO settings (key, value) 
-                VALUES ('handover_state', 'OFFERED') 
-                ON CONFLICT (key) DO UPDATE SET value = 'OFFERED'
-            `);
-
-            await db.execute(sql`
-                INSERT INTO settings (key, value) 
-                VALUES ('handover_offered_by', ${process.env.NODE_NAME || 'Machine-A'}) 
-                ON CONFLICT (key) DO UPDATE SET value = ${process.env.NODE_NAME || 'Machine-A'}
-            `);
+            // 3. Enforce database-level read-only lock to prevent race conditions
+            await db.execute(sql`ALTER DATABASE latuns SET default_transaction_read_only = on;`);
+            
+            try {
+                await db.execute(sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'latuns' AND pid <> pg_backend_pid();`);
+            } catch (e) {
+                console.warn('Could not terminate other backends:', e);
+            }
 
             return NextResponse.json({
                 success: true,
@@ -115,7 +118,20 @@ export async function POST(req: Request) {
                 console.warn(`pg_promote error (may already be primary or not in standby):`, promoteErr.message);
             }
 
-            // Now that DB is unlocked/Primary, update node settings
+            // Now that DB is unlocked/Primary, update node settings & local .env
+            try {
+                const envPath = path.join(process.cwd(), '.env');
+                let envContent = await fs.readFile(envPath, 'utf8');
+                if (envContent.includes('NODE_ROLE=')) {
+                    envContent = envContent.replace(/^NODE_ROLE=.*/m, 'NODE_ROLE="master"');
+                } else {
+                    envContent += '\nNODE_ROLE="master"\n';
+                }
+                await fs.writeFile(envPath, envContent, 'utf8');
+            } catch (e: any) {
+                console.warn('Could not update .env on promotion:', e.message);
+            }
+
             await db.execute(sql`
                 INSERT INTO settings (key, value) 
                 VALUES ('nodeRole', 'Primary') 
