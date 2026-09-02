@@ -44,7 +44,7 @@ Set-Content -Path $envFile -Value $newEnvContent -NoNewline
 Write-Host "Stopping current local containers and resetting replica data volume..." -ForegroundColor Yellow
 docker-compose down -v
 
-Write-Host "Starting node in Standby Replica mode (replicating from $cleanPeer:5433)..." -ForegroundColor Yellow
+Write-Host "Starting node in Standby Replica mode (replicating from ${cleanPeer}:5433)..." -ForegroundColor Yellow
 docker-compose up -d
 
 Write-Host "Waiting for PostgreSQL standby to initialize from Primary..." -ForegroundColor Yellow
