@@ -118,6 +118,17 @@ export async function POST(req: Request) {
                 console.warn(`pg_promote error (may already be primary or not in standby):`, promoteErr.message);
             }
 
+            // Ensure database-level read-only lock is completely removed and backends refreshed
+            try {
+                await db.execute(sql`ALTER DATABASE latuns SET default_transaction_read_only = off;`);
+                try {
+                    await db.execute(sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'latuns' AND pid <> pg_backend_pid();`);
+                } catch (e) {}
+                console.log('Database read/write permissions fully restored.');
+            } catch (roErr: any) {
+                console.warn('Could not reset default_transaction_read_only:', roErr.message);
+            }
+
             // Now that DB is unlocked/Primary, update node settings & local .env
             try {
                 const envPath = path.join(process.cwd(), '.env');
