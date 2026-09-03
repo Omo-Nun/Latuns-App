@@ -12,4 +12,5 @@ const pool = new Pool({
 
 const db = drizzle(pool, { schema });
 
+export { pool };
 export default db;

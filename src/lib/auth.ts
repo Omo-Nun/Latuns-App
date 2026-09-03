@@ -57,6 +57,7 @@ export function verifyStatelessSessionToken(token: string) {
         const decryptedJson = decrypt(encrypted);
         const parsed = JSON.parse(decryptedJson);
         if (!parsed || !parsed.exp || parsed.exp < Date.now()) return null;
+        if (typeof parsed.id !== 'number' || typeof parsed.role_id !== 'number') return null;
         return {
             user: {
                 id: parsed.id,

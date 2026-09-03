@@ -1,13 +1,30 @@
 import { NextResponse } from 'next/server';
 import { encrypt } from '@/lib/encryption';
+import { requirePermission } from '@/lib/auth';
 import db from '@/lib/db';
 import { settings } from '@/lib/schema';
 import fs from 'fs/promises';
 import path from 'path';
 import { sql } from 'drizzle-orm';
+import { headers } from 'next/headers';
+import { exec } from 'child_process';
+import util from 'util';
+
+const execPromise = util.promisify(exec);
 
 export async function POST() {
     try {
+        // Dual auth: accept either a valid user session OR localhost origin
+        const headersList = await headers();
+        const host = headersList.get('host') || '';
+        const isLocalhost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+
+        if (!isLocalhost) {
+            // External request — require user session authentication
+            const authError = await requirePermission('Settings', 'can_edit');
+            if (authError) return authError;
+        }
+
         console.log('Initiating Close of Business (COB) backup trigger...');
         
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -19,13 +36,26 @@ export async function POST() {
         
         const backupFilePath = path.join(backupDir, backupFileName);
         
-        // 1. Create a safe pg_dump (if pg_dump is available in the environment)
-        // Note: For Postgres, we can't just VACUUM INTO. We would need pg_dump. 
-        // For now, since this is a refactor and we don't know if pg_dump is present,
-        // we'll simulate the backup success but log a warning that full PG backup requires pg_dump.
-        console.warn('NOTE: Postgres backups require pg_dump. Simulating backup success for now.');
-        
-        await fs.writeFile(backupFilePath, 'SIMULATED POSTGRES DUMP');
+        // 1. Create a safe pg_dump using postgresql-client
+        const dbUrl = process.env.DATABASE_URL;
+        if (!dbUrl) {
+            throw new Error('DATABASE_URL is not configured. Cannot perform backup.');
+        }
+
+        try {
+            console.log(`Executing pg_dump...`);
+            await execPromise(`pg_dump "${dbUrl}" -f "${backupFilePath}"`);
+            console.log('pg_dump completed successfully.');
+        } catch (dumpErr: any) {
+            console.error(`pg_dump failed: ${dumpErr.message}`);
+            // Fallback for local development environments where pg_dump might not be installed
+            if (process.env.NODE_ENV !== 'production') {
+                console.warn('Development mode: Falling back to simulated backup since pg_dump failed.');
+                await fs.writeFile(backupFilePath, 'SIMULATED POSTGRES DUMP (DEV FALLBACK)');
+            } else {
+                throw new Error(`Database dump failed: ${dumpErr.message}`);
+            }
+        }
 
         // 2. Read the binary backup file and convert to base64 string
         const dbBuffer = await fs.readFile(backupFilePath);

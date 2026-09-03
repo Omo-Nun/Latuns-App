@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { verifyClusterToken } from '@/lib/cluster-auth';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -10,7 +11,13 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
         }
 
-        console.log(`Received DEMOTE signal from peer node.`);
+        // Verify cluster authentication token from peer node
+        if (!verifyClusterToken(body.clusterToken, body.clusterTimestamp)) {
+            console.warn('Demote request rejected: invalid or missing cluster authentication token.');
+            return NextResponse.json({ success: false, error: 'Forbidden: Invalid cluster authentication' }, { status: 403 });
+        }
+
+        console.log(`Received authenticated DEMOTE signal from peer node.`);
         
         // Write the demote signal to data directory
         const dataDir = path.join(process.cwd(), 'data');

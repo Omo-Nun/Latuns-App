@@ -17,6 +17,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Install postgresql-client for pg_dump
+RUN apk add --no-cache postgresql-client
+
 # Create required directories for persistent volumes
 RUN mkdir -p /app/upload /app/backups /app/data
 

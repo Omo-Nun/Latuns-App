@@ -8,11 +8,15 @@ function getActiveKey() {
     const key = process.env.ENCRYPTION_KEY;
     const isBuildPhase = process.argv.includes('build') || process.env.npm_lifecycle_event === 'build';
     
-    if (!key && process.env.NODE_ENV === 'production' && !isBuildPhase) {
-        throw new Error('FATAL: ENCRYPTION_KEY environment variable is missing. It must be a 64-character hex string.');
+    if (!key) {
+        if (process.env.NODE_ENV === 'production' && !isBuildPhase) {
+            throw new Error('FATAL: ENCRYPTION_KEY environment variable is missing in production. It must be a 64-character hex string.');
+        }
+        // Dev/Build fallback
+        return '6c6174756e732d6572702d7365637265742d6b65792d323032362d30352d3130';
     }
     
-    return key || '6c6174756e732d6572702d7365637265742d6b65792d323032362d30352d3130';
+    return key;
 }
 
 export function encrypt(text: string): string {
@@ -32,9 +36,7 @@ export function decrypt(encryptedData: string): string {
     const [ivHex, authTagHex, encryptedHex] = encryptedData.split(':');
     
     if (!ivHex || !authTagHex || !encryptedHex) {
-        // If it's not in our encrypted format, it might be legacy plain text
-        // or a corrupted string. We'll return it as is or handle it.
-        return encryptedData; 
+        throw new Error('Invalid encrypted data format.'); 
     }
 
     const iv = Buffer.from(ivHex, 'hex');
