@@ -30,7 +30,7 @@ export async function PUT(
             for (const item of items) {
                 if (item.approved_qty > 0) {
                     // Update the request item record for historical accuracy
-                    await tx.update(stockRequestItems).set({ approvedQty: item.approved_qty }).where(eq(stockRequestItems.id, item.id));
+                    await tx.update(stockRequestItems).set({ approvedQty: String(item.approved_qty) }).where(eq(stockRequestItems.id, item.id));
 
                     // Deduct from actual storage limits
                     await tx.execute(sql`UPDATE inventory_items SET stock_qty = stock_qty - ${item.approved_qty} WHERE id = ${item.inventory_item_id}`);
@@ -39,7 +39,7 @@ export async function PUT(
                     await tx.insert(inventoryLogs).values({
                         itemId: item.inventory_item_id,
                         type: 'out',
-                        qty: item.approved_qty,
+                        qty: String(item.approved_qty),
                         note: `Approved Issue from Quote #${reqData?.quotationId || 'Unknown'}`
                     });
                 }

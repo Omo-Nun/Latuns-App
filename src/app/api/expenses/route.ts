@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { requirePermission } from '@/lib/auth';
+import { requirePermission, getSession } from '@/lib/auth';
+import { logAudit } from '@/lib/audit';
 import { expenses } from '@/lib/schema';
 import { desc } from 'drizzle-orm';
 
@@ -37,10 +38,22 @@ export async function POST(request: Request) {
 
         const insertResult = await db.insert(expenses).values({
             category,
-            amount: numericAmount,
+            amount: String(numericAmount),
             date: new Date(date),
             note: note || ''
         }).returning({ id: expenses.id });
+
+        // Audit log
+        const session = await getSession();
+        if (session) {
+            await logAudit(
+                session.user.id, session.user.username,
+                'Create', 'Finances',
+                `Recorded expense: ${category} - ₦${numericAmount.toLocaleString()}`,
+                'expense', insertResult[0].id,
+                { entityType: 'expense', entityId: insertResult[0].id, afterData: { category, amount: numericAmount, date, note } }
+            );
+        }
 
         return NextResponse.json({ id: insertResult[0].id }, { status: 201 });
     } catch (error) {

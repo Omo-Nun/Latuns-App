@@ -46,8 +46,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
                 if (matchedInv) {
                     itemsToInsert.push({
                         inventoryItemId: matchedInv.id,
-                        requestedQty: Number(qItem.qty),
-                        approvedQty: Number(qItem.qty)
+                        requestedQty: String(Number(qItem.qty)),
+                        approvedQty: String(Number(qItem.qty))
                     });
                     itemsRequested++;
                 }

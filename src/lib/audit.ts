@@ -8,7 +8,8 @@ export async function logAudit(
     module: string,
     description: string,
     refType?: string,
-    refId?: number
+    refId?: number,
+    options?: { beforeData?: object; afterData?: object; entityType?: string; entityId?: number }
 ) {
     try {
         await db.insert(auditLog).values({
@@ -19,6 +20,10 @@ export async function logAudit(
             description,
             refType: refType || null,
             refId: refId || null,
+            entityType: options?.entityType || null,
+            entityId: options?.entityId || null,
+            beforeData: options?.beforeData ? JSON.stringify(options.beforeData) : null,
+            afterData: options?.afterData ? JSON.stringify(options.afterData) : null,
         });
     } catch (error) {
         console.error("Audit Logging Error:", error);

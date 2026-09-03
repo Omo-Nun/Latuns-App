@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { requirePermission } from '@/lib/auth';
-import { inventoryItems, inventoryLogs, stockRequests } from '@/lib/schema';
-import { asc, sql } from 'drizzle-orm';
+import { requirePermission, getSession } from '@/lib/auth';
+import { logAudit } from '@/lib/audit';
+import { inventoryItems, inventoryLogs, inventoryMovements, stockRequests } from '@/lib/schema';
+import { asc, sql, gt } from 'drizzle-orm';
 import { toSnakeCase } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -35,10 +36,10 @@ export async function POST(request: Request) {
             name,
             unit,
             description: description || '',
-            defaultPrice: Number(default_price) || 0,
+            defaultPrice: String(Number(default_price) || 0),
             tags: tags || null,
-            minStock: min_stock === undefined ? 10 : Number(min_stock),
-            lowStock: low_stock === undefined ? 20 : Number(low_stock)
+            minStock: min_stock === undefined ? '10' : String(Number(min_stock)),
+            lowStock: low_stock === undefined ? '20' : String(Number(low_stock))
         }).returning({ id: inventoryItems.id });
 
         return NextResponse.json({ id: insertResult[0].id }, { status: 201 });
@@ -57,16 +58,53 @@ export async function DELETE(request: Request) {
             return NextResponse.json({ error: 'To reset all inventory, use action=reset_all_confirm' }, { status: 400 });
         }
 
+        const session = await getSession();
+
         await db.transaction(async (tx) => {
-            // Note: Update all inventory stock to 0
-            await tx.update(inventoryItems).set({ stockQty: 0 });
-            // Truncate logs and stock requests
-            await tx.delete(inventoryLogs);
-            await tx.delete(stockRequests);
-            // stock_request_items is deleted via CASCADE on stock_requests
+            // Fetch all items with non-zero stock to create adjustment records
+            const itemsWithStock = await tx.select({
+                id: inventoryItems.id,
+                name: inventoryItems.name,
+                stockQty: inventoryItems.stockQty,
+            }).from(inventoryItems).where(gt(inventoryItems.stockQty, '0'));
+
+            // Create ADJUSTMENT movements for audit trail (records the zeroing out)
+            for (const item of itemsWithStock) {
+                const currentQty = Number(item.stockQty) || 0;
+                if (currentQty > 0) {
+                    await tx.insert(inventoryMovements).values({
+                        itemId: item.id,
+                        movementType: 'ADJUSTMENT',
+                        quantity: String(-currentQty),
+                        note: 'Inventory reset to zero',
+                        createdBy: session?.user?.id || null,
+                    });
+
+                    await tx.insert(inventoryLogs).values({
+                        itemId: item.id,
+                        type: 'adjustment',
+                        qty: String(currentQty),
+                        note: `RESET: Stock adjusted from ${currentQty} to 0`,
+                    });
+                }
+            }
+
+            // Now zero out all stock
+            await tx.update(inventoryItems).set({ stockQty: '0' });
+
+            // Audit log the reset action
+            if (session) {
+                await logAudit(
+                    session.user.id, session.user.username,
+                    'Reset', 'Inventory',
+                    `Reset all inventory levels to zero. ${itemsWithStock.length} items affected.`,
+                    undefined, undefined,
+                    { entityType: 'inventory', afterData: { itemsReset: itemsWithStock.length } }
+                );
+            }
         });
 
-        return NextResponse.json({ message: 'Inventory levels and history reset successfully' });
+        return NextResponse.json({ message: 'Inventory levels reset successfully. Historical records preserved.' });
     } catch (error) {
         console.error('Reset failed:', error);
         return NextResponse.json({ error: 'Failed to reset inventory' }, { status: 500 });

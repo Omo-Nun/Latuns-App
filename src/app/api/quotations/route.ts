@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { requirePermission, getSession } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import { round2 } from '@/lib/financeUtils';
 import { quotations, quotationItems, clients, activityLogs, payments } from '@/lib/schema';
 import { eq, or, and, sql, desc, asc, like, gte, lte } from 'drizzle-orm';
 
@@ -165,10 +166,10 @@ export async function POST(request: Request) {
                 clientCity: client_city || '',
                 projectType: project_type || '',
                 sundries: String(sundries || ''),
-                transportation: Number(transportation || 0),
+                transportation: String(Number(transportation || 0)),
                 status: 'pending',
                 docType: doc_type || 'quotation',
-                discountValue: Number(discount_value || 0),
+                discountValue: String(Number(discount_value || 0)),
                 linkedQuotations: linked_quotations ? JSON.stringify(linked_quotations) : null,
                 headerNote: header_note || null,
                 projectScope: project_scope || null,
@@ -181,13 +182,15 @@ export async function POST(request: Request) {
                 if (!item.description || !item.qty || !item.unit || !item.unit_cost) {
                     throw new Error('Invalid item data');
                 }
+                const qty = Number(item.qty);
+                const unitCost = Number(item.unit_cost);
                 return {
                     quotationId: quotationId,
                     description: item.description,
-                    qty: Number(item.qty),
+                    qty: String(qty),
                     unit: item.unit,
-                    unitCost: Number(item.unit_cost),
-                    total: Number(item.total)
+                    unitCost: String(unitCost),
+                    total: String(round2(qty * unitCost))
                 };
             });
 

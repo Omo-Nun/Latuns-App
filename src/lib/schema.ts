@@ -2,6 +2,7 @@ import {
   pgTable,
   serial,
   text,
+  numeric,
   real,
   timestamp,
   boolean,
@@ -20,12 +21,12 @@ export const inventoryItems = pgTable('inventory_items', {
   name: text('name').notNull(),
   unit: text('unit').notNull(),
   description: text('description'),
-  defaultPrice: real('default_price').default(0),
+  defaultPrice: numeric('default_price', { precision: 15, scale: 2 }).default('0'),
   tags: text('tags'),
   displayOrder: integer('display_order').default(0),
-  stockQty: real('stock_qty').default(0),
-  minStock: real('min_stock').default(10),
-  lowStock: real('low_stock').default(20),
+  stockQty: numeric('stock_qty', { precision: 15, scale: 3 }).default('0'),
+  minStock: numeric('min_stock', { precision: 15, scale: 3 }).default('10'),
+  lowStock: numeric('low_stock', { precision: 15, scale: 3 }).default('20'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 
@@ -62,13 +63,13 @@ export const quotations = pgTable('quotations', {
   agentId: integer('agent_id').references(() => agents.id),
   clientId: integer('client_id').references(() => clients.id),
   sundries: text('sundries'),
-  transportation: real('transportation').default(0),
+  transportation: numeric('transportation', { precision: 15, scale: 2 }).default('0'),
   status: text('status').default('pending'),
   clientVisited: boolean('client_visited').default(false),
   visitStatus: text('visit_status').default('Not Visited'),
   projectStatus: text('project_status').default('Pending'),
   docType: text('doc_type').default('quotation'),
-  discountValue: real('discount_value').default(0),
+  discountValue: numeric('discount_value', { precision: 15, scale: 2 }).default('0'),
   linkedQuotations: text('linked_quotations'),
   headerNote: text('header_note'),
   projectScope: text('project_scope'),
@@ -80,16 +81,16 @@ export const quotationItems = pgTable('quotation_items', {
   id: serial('id').primaryKey(),
   quotationId: integer('quotation_id').notNull().references(() => quotations.id, { onDelete: 'cascade' }),
   description: text('description').notNull(),
-  qty: real('qty').notNull(),
+  qty: numeric('qty', { precision: 15, scale: 3 }).notNull(),
   unit: text('unit').notNull(),
-  unitCost: real('unit_cost').notNull(),
-  total: real('total').notNull(),
+  unitCost: numeric('unit_cost', { precision: 15, scale: 2 }).notNull(),
+  total: numeric('total', { precision: 15, scale: 2 }).notNull(),
 });
 
 export const payments = pgTable('payments', {
   id: serial('id').primaryKey(),
   quotationId: integer('quotation_id').notNull().references(() => quotations.id, { onDelete: 'cascade' }),
-  amount: real('amount').notNull(),
+  amount: numeric('amount', { precision: 15, scale: 2 }).notNull(),
   date: timestamp('date').notNull(),
   note: text('note'),
   createdAt: timestamp('created_at').defaultNow(),
@@ -101,12 +102,12 @@ export const tasks = pgTable('tasks', {
   completed: boolean('completed').default(false),
   alarmTime: timestamp('alarm_time'),
   archivedAt: timestamp('archived_at'),
-  assignedTo: integer('assigned_to'),
-  createdBy: integer('created_by'),
+  assignedTo: integer('assigned_to').references(() => agents.id, { onDelete: 'set null' }),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
   status: text('status').default('pending'),
   priority: text('priority').default('medium'),
-  quotationId: integer('quotation_id'),
-  clientId: integer('client_id'),
+  quotationId: integer('quotation_id').references(() => quotations.id, { onDelete: 'set null' }),
+  clientId: integer('client_id').references(() => clients.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow(),
 });
 
@@ -114,7 +115,7 @@ export const inventoryLogs = pgTable('inventory_logs', {
   id: serial('id').primaryKey(),
   itemId: integer('item_id').notNull().references(() => inventoryItems.id, { onDelete: 'cascade' }),
   type: text('type').notNull(),
-  qty: real('qty').notNull(),
+  qty: numeric('qty', { precision: 15, scale: 3 }).notNull(),
   note: text('note'),
   createdAt: timestamp('created_at').defaultNow(),
 });
@@ -122,7 +123,7 @@ export const inventoryLogs = pgTable('inventory_logs', {
 export const expenses = pgTable('expenses', {
   id: serial('id').primaryKey(),
   category: text('category').notNull(),
-  amount: real('amount').notNull(),
+  amount: numeric('amount', { precision: 15, scale: 2 }).notNull(),
   date: timestamp('date').notNull(),
   note: text('note'),
   createdAt: timestamp('created_at').defaultNow(),
@@ -139,8 +140,8 @@ export const stockRequestItems = pgTable('stock_request_items', {
   id: serial('id').primaryKey(),
   requestId: integer('request_id').notNull().references(() => stockRequests.id, { onDelete: 'cascade' }),
   inventoryItemId: integer('inventory_item_id').notNull().references(() => inventoryItems.id, { onDelete: 'cascade' }),
-  requestedQty: real('requested_qty').notNull(),
-  approvedQty: real('approved_qty'),
+  requestedQty: numeric('requested_qty', { precision: 15, scale: 3 }).notNull(),
+  approvedQty: numeric('approved_qty', { precision: 15, scale: 3 }),
 });
 
 export const companyAssets = pgTable('company_assets', {
@@ -150,8 +151,8 @@ export const companyAssets = pgTable('company_assets', {
   classification: text('classification'),
   imageUrl: text('image_url'),
   purchaseDate: timestamp('purchase_date'),
-  purchaseCost: real('purchase_cost').default(0),
-  currentValue: real('current_value').default(0),
+  purchaseCost: numeric('purchase_cost', { precision: 15, scale: 2 }).default('0'),
+  currentValue: numeric('current_value', { precision: 15, scale: 2 }).default('0'),
   status: text('status').default('Active'),
   createdAt: timestamp('created_at').defaultNow(),
 });
@@ -225,6 +226,10 @@ export const auditLog = pgTable('audit_log', {
   description: text('description').notNull(),
   refType: text('ref_type'),
   refId: integer('ref_id'),
+  entityType: text('entity_type'),
+  entityId: integer('entity_id'),
+  beforeData: text('before_data'),
+  afterData: text('after_data'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 
@@ -254,3 +259,15 @@ export const activityLogs = pgTable('activity_logs', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
+export const inventoryMovements = pgTable('inventory_movements', {
+  id: serial('id').primaryKey(),
+  itemId: integer('item_id').notNull().references(() => inventoryItems.id, { onDelete: 'cascade' }),
+  movementType: text('movement_type').notNull(), // 'IN', 'OUT', 'ADJUSTMENT', 'OPENING_BALANCE'
+  quantity: numeric('quantity', { precision: 15, scale: 3 }).notNull(),
+  unitCost: numeric('unit_cost', { precision: 15, scale: 2 }),
+  referenceType: text('reference_type'), // 'quotation', 'stock_request', 'manual'
+  referenceId: integer('reference_id'),
+  note: text('note'),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow(),
+});

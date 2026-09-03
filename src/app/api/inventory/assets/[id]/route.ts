@@ -20,8 +20,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             classification: classification || '',
             imageUrl: image_url || null,
             purchaseDate: purchase_date ? new Date(purchase_date) : null,
-            purchaseCost: purchase_cost || 0,
-            currentValue: current_value || 0,
+            purchaseCost: String(Number(purchase_cost) || 0),
+            currentValue: String(Number(current_value) || 0),
             status: status || 'Active'
         }).where(eq(companyAssets.id, id)).returning({ id: companyAssets.id });
 

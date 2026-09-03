@@ -36,19 +36,18 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Too many failed login attempts. Please try again in 15 minutes.' }, { status: 429 });
         }
 
-        if (password.length < 4) {
-            return NextResponse.json({ error: 'Password must be at least 4 characters long' }, { status: 400 });
+        if (password.length < 8) {
+            return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 });
         }
 
         const trimmedUsername = username.trim();
-        const trimmedPassword = password.trim();
 
         const result = await db.select().from(users)
             .where(sql`LOWER(${users.username}) = LOWER(${trimmedUsername})`)
             .limit(1);
         const user = result[0];
 
-        if (!user || !verifyPassword(trimmedPassword, user.passwordHash)) {
+        if (!user || !verifyPassword(password, user.passwordHash)) {
             return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
         }
         

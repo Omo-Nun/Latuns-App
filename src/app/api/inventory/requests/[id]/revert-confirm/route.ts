@@ -25,7 +25,7 @@ export async function PUT(
 
         await db.transaction(async (tx) => {
             for (const item of items) {
-                const approvedQty = item.approvedQty || 0;
+                const approvedQty = Number(item.approvedQty) || 0;
                 if (approvedQty > 0) {
                     // Return stock to inventory
                     await tx.execute(sql`UPDATE inventory_items SET stock_qty = stock_qty + ${approvedQty} WHERE id = ${item.inventoryItemId}`);
@@ -34,12 +34,12 @@ export async function PUT(
                     await tx.insert(inventoryLogs).values({
                         itemId: item.inventoryItemId,
                         type: 'in',
-                        qty: approvedQty,
+                        qty: String(approvedQty),
                         note: `Returned from Reversal of Quote #${requestData.quotationId}`
                     });
 
                     // Reset approved qty
-                    await tx.update(stockRequestItems).set({ approvedQty: 0 }).where(eq(stockRequestItems.id, item.id));
+                    await tx.update(stockRequestItems).set({ approvedQty: '0' }).where(eq(stockRequestItems.id, item.id));
                 }
             }
 

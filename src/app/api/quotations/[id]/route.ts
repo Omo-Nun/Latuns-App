@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { requirePermission, getSession } from '@/lib/auth';
-import { calcGrandTotal } from '@/lib/financeUtils';
+import { calcGrandTotal, round2 } from '@/lib/financeUtils';
 import { logAudit } from '@/lib/audit';
 import { quotations, agents, quotationItems, payments, stockRequests, clients } from '@/lib/schema';
 import { eq, desc, like, sql } from 'drizzle-orm';
@@ -182,7 +182,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
             if (status !== undefined) updates.status = status;
             if (sundries !== undefined) updates.sundries = String(sundries);
-            if (transportation !== undefined) updates.transportation = Number(transportation);
+            if (transportation !== undefined) updates.transportation = String(Number(transportation));
 
             if (client_name !== undefined) {
                 updates.clientName = client_name;
@@ -261,13 +261,15 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
                         if (!item.description || !item.qty || !item.unit || !item.unit_cost) {
                             throw new Error('Invalid item data');
                         }
+                        const qty = Number(item.qty);
+                        const unitCost = Number(item.unit_cost);
                         return {
                             quotationId: id,
                             description: item.description,
-                            qty: Number(item.qty),
+                            qty: String(qty),
                             unit: item.unit,
-                            unitCost: Number(item.unit_cost),
-                            total: Number(item.total)
+                            unitCost: String(unitCost),
+                            total: String(round2(qty * unitCost))
                         };
                     });
                     await tx.insert(quotationItems).values(itemsToInsert);

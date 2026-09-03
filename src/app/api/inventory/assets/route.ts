@@ -35,8 +35,8 @@ export async function POST(request: Request) {
             classification: classification || '',
             imageUrl: image_url || null,
             purchaseDate: purchase_date ? new Date(purchase_date) : null,
-            purchaseCost: Number(purchase_cost) || 0,
-            currentValue: Number(current_value) || 0,
+            purchaseCost: String(Number(purchase_cost) || 0),
+            currentValue: String(Number(current_value) || 0),
             status: status || 'Active'
         }).returning({ id: companyAssets.id });
 

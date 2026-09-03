@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { requirePermission, getSession } from '@/lib/auth';
+import { logAudit } from '@/lib/audit';
 import { payments, activityLogs, clients } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 
 export async function POST(request: Request) {
+    const error = await requirePermission('Finances', 'can_edit');
+    if (error) return error;
+
     try {
         const body = await request.json();
         const { clientId, date, allocations } = body;
@@ -12,6 +17,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Invalid allocations' }, { status: 400 });
         }
 
+        const session = await getSession();
         let totalSum = 0;
 
         await db.transaction(async (tx) => {
@@ -23,7 +29,7 @@ export async function POST(request: Request) {
                 
                 await tx.insert(payments).values({
                     quotationId: alloc.quotationId,
-                    amount: amount,
+                    amount: String(amount),
                     date: date ? new Date(date) : new Date(),
                     note: alloc.note || 'Bulk Payment Allocation'
                 });
@@ -39,6 +45,17 @@ export async function POST(request: Request) {
                     description: `Recorded Bulk Payment of ₦${totalSum.toLocaleString()} allocated across ${refIds.length} projects.`
                 });
                 await tx.update(clients).set({ updatedAt: new Date() }).where(eq(clients.id, clientId));
+            }
+
+            // Audit log
+            if (session) {
+                await logAudit(
+                    session.user.id, session.user.username,
+                    'Create', 'Finances',
+                    `Recorded bulk payment of ₦${totalSum.toLocaleString()} across ${refIds.length} quotations`,
+                    'payment', undefined,
+                    { entityType: 'bulk_payment', afterData: { totalSum, quotationIds: refIds } }
+                );
             }
         });
 

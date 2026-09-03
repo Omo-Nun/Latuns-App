@@ -12,12 +12,21 @@ function getActiveKey() {
         if (process.env.NODE_ENV === 'production' && !isBuildPhase) {
             throw new Error('FATAL: ENCRYPTION_KEY environment variable is missing in production. It must be a 64-character hex string.');
         }
-        // Dev/Build fallback
-        return '6c6174756e732d6572702d7365637265742d6b65792d323032362d30352d3130';
+        // Dev/Build fallback: generate a random key per process and warn
+        if (!getActiveKey._devKey) {
+            getActiveKey._devKey = crypto.randomBytes(32).toString('hex');
+            console.warn(
+                '⚠️  ENCRYPTION_KEY not set. Using a random key for this session. ' +
+                'Encrypted data will NOT survive restarts. Set ENCRYPTION_KEY in .env for persistence.'
+            );
+        }
+        return getActiveKey._devKey;
     }
     
     return key;
 }
+// Store the dev fallback key on the function itself to persist across calls within the same process
+getActiveKey._devKey = null as string | null;
 
 export function encrypt(text: string): string {
     const iv = crypto.randomBytes(IV_LENGTH);

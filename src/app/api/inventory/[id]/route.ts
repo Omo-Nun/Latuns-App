@@ -24,10 +24,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             name,
             unit,
             description: description || '',
-            defaultPrice: Number(default_price) || 0,
+            defaultPrice: String(Number(default_price) || 0),
             tags: tags || null,
-            minStock: min_stock === undefined ? 10 : Number(min_stock),
-            lowStock: low_stock === undefined ? 20 : Number(low_stock)
+            minStock: min_stock === undefined ? '10' : String(Number(min_stock)),
+            lowStock: low_stock === undefined ? '20' : String(Number(low_stock))
         }).where(eq(inventoryItems.id, id));
 
         return NextResponse.json({ success: true });
